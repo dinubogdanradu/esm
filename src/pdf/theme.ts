@@ -10,12 +10,22 @@ export const colors = {
   navy: '#0b2540',
   text: '#000000',
   surface: '#ffffff',
+  /** Page backdrop is a soft blue-grey, not flat white. */
+  pageBg: '#eef4f9',
+  /** Section-label bar background. */
+  labelBg: '#33556e',
+  /** Content card fill (the card no longer has a hard border). */
+  cardFill: '#f1f3f6',
+  dashDivider: '#a9bac6',
+  /** Decorative header accent, colors lifted from the original slide's circles. */
+  accentLight: '#d5e5f8',
+  accentMid: '#8ab7ea',
 } as const
 
 export const layout = {
   headerHeight: 146,
   cardMargin: 26,
-  cardRadius: 8,
+  cardRadius: 30,
   photoSize: 130,
   logoWidth: 97,
   logoHeight: 49,
@@ -23,6 +33,8 @@ export const layout = {
   leftColumnFlex: 40,
   rightColumnFlex: 60,
   columnGap: 18,
+  tabWidth: 10,
+  tabHeight: 46,
 } as const
 
 export const type = {
