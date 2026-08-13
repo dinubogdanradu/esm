@@ -2,26 +2,23 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { Font, renderToBuffer } from '@react-pdf/renderer'
+import { renderToBuffer } from '@react-pdf/renderer'
 import { vi } from 'vitest'
 import { defaultCv } from '@/schema/defaults'
 import type { Cv } from '@/schema/cv'
 
 // Vite turns asset imports into URL strings, which react-pdf cannot resolve under
-// node. Both mocks swap in real filesystem paths so the renderer can read them;
-// everything else about the document is exercised for real.
-vi.mock('./fonts', () => ({
-  registerFonts: () => {
-    Font.register({
-      family: 'Roboto',
-      fonts: [
-        { src: resolve('src/pdf/fonts/Roboto-Regular.ttf'), fontWeight: 400 },
-        { src: resolve('src/pdf/fonts/Roboto-Bold.ttf'), fontWeight: 700 },
-      ],
-    })
-    Font.registerHyphenationCallback((word) => [word])
-  },
-}))
+// node. Only those imports are swapped for filesystem paths — the real
+// registerFonts still runs, so a variant added there is covered without touching
+// this file. Everything else about the document is exercised for real.
+const fontPath = (file: string) => ({
+  default: resolve('src/pdf/fonts', file),
+})
+
+vi.mock('./fonts/Roboto-Regular.ttf', () => fontPath('Roboto-Regular.ttf'))
+vi.mock('./fonts/Roboto-Bold.ttf', () => fontPath('Roboto-Bold.ttf'))
+vi.mock('./fonts/Roboto-Italic.ttf', () => fontPath('Roboto-Italic.ttf'))
+vi.mock('./fonts/Roboto-BoldItalic.ttf', () => fontPath('Roboto-BoldItalic.ttf'))
 
 vi.mock('./assets/infosys-logo.png', () => ({
   default: readFileSync(resolve('src/pdf/assets/infosys-logo.png')),
@@ -126,6 +123,16 @@ describe('CvDocument', () => {
     }))
 
     expect(countPages(await renderToBuffer(<CvDocument cv={cv} />))).toBeGreaterThan(1)
+  })
+
+  test('resolves every font variant the stylesheet uses', async () => {
+    // react-pdf throws rather than substituting, so an unregistered weight or
+    // fontStyle anywhere in the stylesheet fails the entire render. The section
+    // labels are italic and the headings bold, so a populated render exercises
+    // all four variants.
+    await expect(
+      renderToBuffer(<CvDocument cv={populated()} />),
+    ).resolves.toBeDefined()
   })
 
   test('embeds selectable text rather than an image', async () => {

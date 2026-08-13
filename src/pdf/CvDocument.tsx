@@ -3,7 +3,10 @@ import {
   Document,
   Image,
   Page,
+  Path,
+  Polygon,
   StyleSheet,
+  Svg,
   Text,
   View,
 } from '@react-pdf/renderer'
@@ -36,7 +39,7 @@ registerFonts()
 const styles = StyleSheet.create({
   page: {
     fontFamily: FONT_FAMILY,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.pageBg,
     color: colors.text,
   },
 
@@ -47,6 +50,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.cardMargin,
     paddingVertical: 8,
     backgroundColor: colors.accent,
+  },
+  chevrons: {
+    marginRight: 14,
   },
   photo: {
     width: layout.photoSize,
@@ -84,7 +90,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   contactItem: {
-    marginRight: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  contactIcon: {
+    marginRight: 5,
+  },
+  contactText: {
     fontSize: type.contact,
     color: colors.surface,
   },
@@ -96,15 +109,28 @@ const styles = StyleSheet.create({
   },
 
   card: {
+    position: 'relative',
     flexGrow: 1,
     marginHorizontal: layout.cardMargin,
     marginTop: 22,
     marginBottom: layout.cardMargin,
     padding: 14,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    borderColor: colors.text,
+    backgroundColor: colors.cardFill,
     borderRadius: layout.cardRadius,
+  },
+  cardTab: {
+    position: 'absolute',
+    top: '42%',
+    width: layout.tabWidth,
+    height: layout.tabHeight,
+    backgroundColor: colors.accent,
+    borderRadius: 2,
+  },
+  cardTabLeft: {
+    left: -layout.tabWidth / 2,
+  },
+  cardTabRight: {
+    right: -layout.tabWidth / 2,
   },
   columns: {
     flexDirection: 'row',
@@ -113,27 +139,50 @@ const styles = StyleSheet.create({
     flexBasis: `${layout.leftColumnFlex}%`,
     paddingRight: layout.columnGap,
   },
+  columnDivider: {
+    width: 1,
+    borderLeftWidth: 1,
+    borderLeftStyle: 'dashed',
+    borderLeftColor: colors.dashDivider,
+    marginHorizontal: 4,
+  },
   rightColumn: {
     flexBasis: `${layout.rightColumnFlex}%`,
+  },
+  rowDivider: {
+    borderTopWidth: 1,
+    borderTopStyle: 'dashed',
+    borderTopColor: colors.dashDivider,
+    marginVertical: 14,
   },
 
   section: {
     marginBottom: 14,
   },
-  label: {
+  labelBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     alignSelf: 'flex-start',
-    marginBottom: 6,
-    paddingHorizontal: 4,
-    backgroundColor: colors.surface,
-    color: colors.accent,
-    fontSize: type.label,
-    fontWeight: 700,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    marginBottom: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: colors.labelBg,
+    borderRadius: 4,
   },
-  /** Lifts the topmost label so it straddles the card border, as in the slide. */
+  labelDash: {
+    width: 20,
+    height: 2,
+    marginRight: 8,
+    backgroundColor: colors.surface,
+  },
+  label: {
+    color: colors.surface,
+    fontSize: type.label,
+    fontStyle: 'italic',
+  },
+  /** Lifts the topmost label so it straddles the card's top edge, as in the slide. */
   labelOnBorder: {
-    marginTop: -21,
+    marginTop: -20,
     marginLeft: 4,
   },
 
@@ -163,6 +212,7 @@ const styles = StyleSheet.create({
     color: colors.navy,
     fontSize: type.entryTitle,
     fontWeight: 700,
+    textDecoration: 'underline',
   },
   entryMeta: {
     marginBottom: 3,
@@ -206,11 +256,41 @@ function Section({ label, onBorder, children }: SectionProps) {
   return (
     // minPresenceAhead keeps a heading from being orphaned at the foot of a page.
     <View style={styles.section} minPresenceAhead={40}>
-      <Text style={onBorder ? [styles.label, styles.labelOnBorder] : styles.label}>
-        {label}
-      </Text>
+      <View style={onBorder ? [styles.labelBar, styles.labelOnBorder] : styles.labelBar}>
+        <View style={styles.labelDash} />
+        <Text style={styles.label}>{label}</Text>
+      </View>
       {children}
     </View>
+  )
+}
+
+/** Decorative chevrons beside the logo, colors lifted from the original slide's circles. */
+function Chevrons() {
+  return (
+    <Svg width={54} height={40} viewBox="0 0 54 40" style={styles.chevrons}>
+      <Polygon points="36,4 16,20 36,36 44,36 24,20 44,4" fill={colors.accentLight} />
+      <Polygon points="44,4 24,20 44,36 52,36 32,20 52,4" fill={colors.accentMid} />
+    </Svg>
+  )
+}
+
+function MailIcon() {
+  return (
+    <Svg width={10} height={8} viewBox="0 0 20 16" style={styles.contactIcon}>
+      <Path d="M1 1 H19 V15 H1 Z M1 1 L10 9 L19 1" stroke={colors.surface} strokeWidth={1.4} fill="none" />
+    </Svg>
+  )
+}
+
+function PinIcon() {
+  return (
+    <Svg width={9} height={11} viewBox="0 0 16 20" style={styles.contactIcon}>
+      <Path
+        d="M8 0 C3.6 0 0 3.4 0 7.6 C0 13 8 20 8 20 C8 20 16 13 16 7.6 C16 3.4 12.4 0 8 0 Z"
+        fill={colors.surface}
+      />
+    </Svg>
   )
 }
 
@@ -235,15 +315,17 @@ function Header({ cv }: { cv: Cv }) {
         )}
         {contacts.length > 0 && (
           <View style={styles.contactRow}>
-            {contacts.map((contact) => (
-              <Text key={contact} style={styles.contactItem}>
-                {contact}
-              </Text>
+            {contacts.map((contact, index) => (
+              <View key={contact} style={styles.contactItem}>
+                {index === 0 ? <MailIcon /> : <PinIcon />}
+                <Text style={styles.contactText}>{contact}</Text>
+              </View>
             ))}
           </View>
         )}
       </View>
 
+      {BRAND_LOGO !== null && <Chevrons />}
       {BRAND_LOGO !== null && <Image style={styles.logo} src={BRAND_LOGO} />}
     </View>
   )
@@ -261,6 +343,8 @@ export default function CvDocument({ cv }: { cv: Cv }) {
         <Header cv={cv} />
 
         <View style={styles.card}>
+          <View style={[styles.cardTab, styles.cardTabLeft]} />
+          <View style={[styles.cardTab, styles.cardTabRight]} />
           <View style={styles.columns}>
             <View style={styles.leftColumn}>
               {present.profile && (
@@ -294,6 +378,8 @@ export default function CvDocument({ cv }: { cv: Cv }) {
               )}
             </View>
 
+            <View style={styles.columnDivider} />
+
             <View style={styles.rightColumn}>
               {present.experience && (
                 <Section label="Experience summary" onBorder>
@@ -321,6 +407,8 @@ export default function CvDocument({ cv }: { cv: Cv }) {
       {hasSecondPageContent(cv) && (
         <Page size={PAGE_SIZE} style={styles.page} wrap>
           <View style={styles.card}>
+            <View style={[styles.cardTab, styles.cardTabLeft]} />
+            <View style={[styles.cardTab, styles.cardTabRight]} />
             <View style={styles.columns}>
               <View style={styles.leftColumn}>
                 {present.certifications && (
@@ -331,6 +419,8 @@ export default function CvDocument({ cv }: { cv: Cv }) {
                   </Section>
                 )}
               </View>
+
+              <View style={styles.columnDivider} />
 
               <View style={styles.rightColumn}>
                 {(present.languages || present.softSkills) && (
@@ -369,8 +459,11 @@ export default function CvDocument({ cv }: { cv: Cv }) {
               </View>
             </View>
 
+            {(present.certifications || present.languages || present.softSkills) &&
+              present.projects && <View style={styles.rowDivider} />}
+
             {present.projects && (
-              <Section label="Projects">
+              <Section label="Personal Projects">
                 {projects.map((project) => (
                   <View key={project.id} minPresenceAhead={30}>
                     <Text style={styles.entryTitle}>{project.title}</Text>

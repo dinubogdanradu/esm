@@ -101,9 +101,12 @@ icon carried across needs converting to an ESM import.
     absolutely positioned at fixed offsets, which clips user content of unknown
     length. Sections are flex stacks with `wrap` and `minPresenceAhead` so overflow
     paginates.
-  - **Only registered font variants exist** (Roboto 400 and 700, bundled in
-    `src/pdf/fonts/`). Using `fontStyle: 'italic'` or an unregistered weight throws
-    at render time rather than falling back.
+  - **Only registered font variants exist** (Roboto 400, 700, italic and bold
+    italic, bundled in `src/pdf/fonts/`). react-pdf throws rather than substituting,
+    so a style using an unregistered weight or `fontStyle` fails the entire render
+    with "Could not resolve font for Roboto". Adding such a style means adding the
+    matching file and entry in `fonts.ts`; the node-environment document tests catch
+    this.
   - `BRAND_LOGO` in `CvDocument.tsx` is static branding, not CV data, and appears on
     every generated CV.
 - **`src/preview/`** — `usePdfBlobUrl` debounces rendering and revokes superseded
