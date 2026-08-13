@@ -82,22 +82,13 @@
   font-weight: 600;
 }
 
-.previewPane {
-  display: grid;
-  place-items: center;
-  border: 1px dashed var(--color-muted);
-  background: none;
-  box-shadow: none;
+.loading {
   color: var(--color-muted);
-  text-align: center;
+  font-size: 0.875rem;
 }
 
 @media (max-width: 60rem) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .previewPane {
-    display: none;
   }
 }

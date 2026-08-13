@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
@@ -9,6 +9,9 @@ import { useDraftPersistence } from '@/storage/useDraftPersistence'
 import StepNav from './StepNav'
 import styles from './CvBuilder.module.css'
 import { FIRST_STEP_ID, STEPS, findStepIndex } from './steps'
+
+// react-pdf is a large dependency; loading it separately lets the form paint first.
+const PdfPreview = lazy(() => import('@/preview/PdfPreview'))
 
 export default function CvBuilder() {
   const { stepId } = useParams<{ stepId: string }>()
@@ -90,7 +93,7 @@ export default function CvBuilder() {
           </header>
 
           <div className={styles.body}>
-            <Component step={step} />
+            <Component />
           </div>
 
           {blocked && (
@@ -120,8 +123,10 @@ export default function CvBuilder() {
           </div>
         </section>
 
-        <aside className={`${styles.pane} ${styles.previewPane}`}>
-          <p>Live PDF preview arrives in Phase 4.</p>
+        <aside className={styles.pane}>
+          <Suspense fallback={<p className={styles.loading}>Loading preview…</p>}>
+            <PdfPreview />
+          </Suspense>
         </aside>
       </div>
     </FormProvider>
