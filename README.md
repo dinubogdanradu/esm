@@ -6,11 +6,12 @@ updating beside the form as you type.
 
 ## Status
 
-In development. Phase 0 of [docs/PLAN.md](docs/PLAN.md) is complete: the Vite +
-TypeScript toolchain is in place and `src/` renders a placeholder shell. The
-multi-step form, skill manager and PDF template are not built yet. The upstream
-codebase this replaces sits in `legacy/` as reference and will be deleted once
-Phase 1 lands.
+In development. Phases 0 and 1 of [docs/PLAN.md](docs/PLAN.md) are complete: the
+Vite + TypeScript toolchain, the zod data model, and the nine-step form shell with
+validation gating and localStorage autosave. The per-step field UI, the skill
+manager and the PDF template are not built yet, so each step currently renders a
+placeholder listing the fields it will own. The upstream codebase this replaces
+sits in `legacy/` as reference and will be deleted once Phase 2 lands.
 
 ## What it does
 

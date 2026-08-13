@@ -81,7 +81,35 @@ Verified: `npm run typecheck`, `npm test` (2 passed), `npm run build`, and
   inert because nothing imports that tree, but any icon reused in the new app
   needs converting to an ESM import — Vite has no `require`.
 
-## Phase 1: data model and form shell
+## Phase 1: data model and form shell (done)
+
+Built as described below, with these implementation decisions:
+
+- **Optional fields are empty strings, not `undefined`.** Every text input stays
+  controlled and no rehydrated draft can put `undefined` into one. The `?` markers
+  in the Phase 2 type sketch mean "may be empty", not "may be absent".
+- **Skill `level` is required with a default of 3** rather than optional. The
+  group's `showLevel` flag already encodes "not rated", so an optional numeric
+  field would have been a second way to say the same thing.
+- **HashRouter, not BrowserRouter.** GitHub Pages has no rewrite rules, so a
+  path-based deep link such as `/build/projects` would 404 on refresh.
+- **Draft rehydration normalizes rather than validates.** A draft is half-filled by
+  definition, so `cvSchema.safeParse` would reject almost every one. `normalizeDraft`
+  rebuilds a complete `Cv` over the defaults: missing keys get defaults, wrong types
+  are replaced, unknown keys are dropped. The `DRAFT_KEY` version suffix discards
+  drafts wholesale when a shape change makes them unreadable.
+- **Deep links are treated as already-reached steps,** so a returning user can land
+  on a later step. Step gating is UX, not a trust boundary.
+- Steps are placeholders listing the fields they will own; Phase 2 swaps the
+  `Component` on each entry in `STEPS` and changes nothing else.
+
+Verified: `npm run typecheck`, `npm test` (33 passed), `npm run build`, dev server
+transforming without errors. Test coverage is on the parts worth protecting —
+schema rules (required fields, the `current`/`endDate` refinement, `YYYY-MM`
+dates), draft normalization against junk input, and the shell's routing,
+validation gating and autosave wiring.
+
+### Original specification
 
 `src/schema/cv.ts` holds the zod schemas; types come from `z.infer`, making the
 schema the single source of truth for validation, types and defaults. Every
@@ -103,25 +131,111 @@ ships as up/down buttons; dnd-kit is a follow-on rather than a v1 blocker.
 
 ## Phase 2: step forms
 
-One component and one schema slice per step.
+One component and one zod schema slice per step. Nine steps: the eight CV sections
+in the order below, then review and download. Sections render in the PDF in this
+same order, and an empty section is omitted entirely rather than printing a bare
+heading.
 
-**Pending: the section and field list.** Each field needs its step, input type
-(text, textarea, date, repeatable, tag list) and whether it is required.
+```ts
+type Cv = {
+  personal: {
+    firstName: string          // required
+    lastName: string           // required
+    headline: string           // required, e.g. "Senior Software Engineer"
+    location?: string
+    email: string              // required
+    phone?: string
+    website?: string
+    linkedin?: string
+    photo?: string             // data URL, optional
+  }
+
+  profile: {
+    summary: string            // required, textarea
+  }
+
+  // Qualifications: formal education
+  qualifications: Array<{
+    id: string
+    institution: string        // required
+    degree: string             // required
+    field?: string
+    location?: string
+    startDate?: MonthYear
+    endDate?: MonthYear
+    grade?: string
+  }>
+
+  // Areas of expertise: the grouped skill model
+  expertise: Array<{
+    id: string
+    name: string               // required, e.g. "Cloud & Infrastructure"
+    showLevel: boolean
+    skills: Array<{ id: string, name: string, level?: 1 | 2 | 3 | 4 | 5 }>
+  }>
+
+  // Experience summary: full entries with achievement bullets
+  experience: Array<{
+    id: string
+    company: string            // required
+    position: string           // required
+    location?: string
+    startDate: MonthYear       // required
+    endDate?: MonthYear        // omitted when current is true
+    current: boolean
+    bullets: Array<{ id: string, text: string }>   // at least one
+    tech: string[]             // tag input
+  }>
+
+  certifications: Array<{
+    id: string
+    name: string               // required
+    issuer?: string
+    date?: MonthYear
+    expiryDate?: MonthYear
+    credentialUrl?: string
+  }>
+
+  // One section, two shapes: languages carry a level, soft skills do not
+  languages: Array<{
+    id: string
+    name: string               // required
+    level: 'Native' | 'Fluent' | 'Professional' | 'Conversational' | 'Basic'
+  }>
+  softSkills: Array<{ id: string, name: string }>   // plain tag list
+
+  projects: Array<{
+    id: string
+    name: string               // required
+    role?: string
+    description?: string
+    tech: string[]
+    url?: string
+    startDate?: MonthYear
+    endDate?: MonthYear
+  }>
+}
+```
+
+Assumptions worth overriding if wrong:
+
+- `MonthYear` is a `YYYY-MM` string from a month picker rather than free text, so
+  entries can be sorted newest-first automatically and formatted for the PDF in one
+  place. Experience uses a `current` boolean instead of typing "Present".
+- The `personal` field set above is a proposal, not something that was specified.
+  Fields here are cheap to add later.
+- Proficiency levels on expertise skills are numeric in the model; how they render
+  (dots, a text label, or not at all) is a template decision in Phase 4.
 
 ## Phase 3: skills manager
 
-```ts
-skillGroups: [{
-  id: string
-  name: string
-  showLevel: boolean
-  skills: [{ id: string, name: string, level?: 1 | 2 | 3 | 4 | 5 }]
-}]
-```
+The UI for the `expertise` array defined above — user-defined groups, reorderable,
+with the `exampleSkills` util from `legacy/utils/` grown into a typed per-category
+catalog for autocomplete. `showLevel` lets one group render as plain tags and
+another as rated.
 
-User-defined groups, reorderable, with the existing `exampleSkills` util grown
-into a typed per-category catalog for autocomplete. `showLevel` lets one group
-render as plain tags and another as rated.
+The soft skills tag input in the Languages & Soft Skills step is deliberately not
+part of this: it is a flat list of names with no levels and no grouping.
 
 Open question for the template: proficiency as dots or bars looks better but is
 not machine-readable, whereas a text label ("Advanced") parses. To be decided
