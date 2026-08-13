@@ -36,15 +36,17 @@ VITE_BASE=/<repo>/ npm run build && npm run deploy
 
 This is a rewrite in progress, not a finished app. Read [docs/PLAN.md](docs/PLAN.md)
 before starting work — it holds the architecture decisions, their rationale, the
-phase breakdown and the known constraints. Phase 0 (toolchain) is complete;
-`src/` currently renders a placeholder shell.
+phase breakdown and the known constraints. Phases 0 (toolchain) and 1 (data model
+and form shell) are complete. Each of the nine steps renders a placeholder listing
+the fields it will own; Phase 2 replaces the `Component` on each entry in `STEPS`
+and should need to change nothing else.
 
 The repo began as a fork of an Odin-Project-style CV builder. That codebase now
 sits in `legacy/` as design reference only:
 
 - Nothing in `src/` imports it, it is outside the `tsconfig.app.json` include and
   the Vitest include glob, and it does not typecheck or build.
-- It gets deleted once Phase 1 renders the real shell.
+- It gets deleted once Phase 2 renders the real field UI.
 - Do not extend it or copy its patterns. It stores form data as a positional
   array where consumers hardcode indexes (`info[0].value`, `info[8]`), mutates
   state objects in place before `setState`, and generates its PDF by
@@ -57,24 +59,38 @@ icon carried across needs converting to an ESM import.
 
 ## Architecture
 
-Target shape, as specified in the plan. Phases 1 through 4 build this out:
+- **`src/schema/cv.ts`** — zod schemas are the single source of truth. Types come
+  from `z.infer`, so validation, TypeScript types and form defaults all derive from
+  one definition. Do not hand-write a parallel interface for CV data.
+  `src/schema/defaults.ts` holds `defaultCv()` and the `blankX()` factories that
+  `useFieldArray` appends.
+- **Optional means empty string, never `undefined`.** Every text field is a
+  `string`, so inputs stay controlled and rehydrated drafts cannot break them.
+  Optional URLs and dates are modelled as `z.union([z.literal(''), ...])`.
+- **`src/builder/steps.ts`** — `STEPS` is the single source of step order, titles,
+  and validation scope. The progress nav, next/back and PDF section order all
+  derive from it, so adding a section means adding an entry there. `validate` holds
+  section-level paths because `trigger('personal')` validates the whole subtree.
+- **Form state** — one `useForm` in `src/builder/CvBuilder.tsx` is the only store.
+  Do not add a context or reducer holding the same data; the two will drift. The
+  route is `/build/:stepId` under a single element, so form state survives step
+  changes. The preview will subscribe through `useWatch` with a debounce, as
+  autosave already does.
+- **`src/storage/draft.ts`** — `normalizeDraft` rebuilds a complete `Cv` from
+  arbitrary stored JSON rather than validating it. Drafts are half-filled by
+  definition, so `cvSchema.safeParse` would reject nearly all of them. When you add
+  a field to the schema, add it to the matching `toX` mapper too, or stored drafts
+  will silently drop it. Bump `DRAFT_KEY` for a breaking shape change.
+- **`src/pdf/`** (Phase 4) — `@react-pdf/renderer` components will be both the
+  preview and the download; one template definition, so the two cannot diverge.
+  Note this is a different package from `react-pdf`, a viewer for existing PDFs,
+  which was removed. The template uses react-pdf's own StyleSheet subset, not CSS
+  Modules, and cannot flow content between columns — a sidebar layout only works if
+  the sidebar always fits on one page.
 
-- **`src/schema/`** — zod schemas are the single source of truth. Types come from
-  `z.infer`, so validation, TypeScript types and form defaults all derive from one
-  definition. Do not hand-write a parallel interface for CV data.
-- **Form state** — one `useForm` (react-hook-form) at the builder root is the only
-  store. Do not add a context or reducer holding the same data; the two will drift.
-  The preview subscribes through `useWatch` with a debounce.
-- **Steps** — a data array of `{ id, title, fieldPaths, Component }` on
-  react-router URLs. The progress indicator, next/back and per-step validation all
-  derive from that array, so adding a step means adding an entry, not editing
-  navigation logic. `Next` calls `trigger(fieldPaths)` for the current step.
-- **`src/pdf/`** — `@react-pdf/renderer` components are both the preview and the
-  download; one template definition, so the two cannot diverge. Note this is a
-  different package from `react-pdf`, which is a viewer for existing PDFs and was
-  removed. The template uses react-pdf's own StyleSheet subset, not CSS Modules,
-  and it cannot flow content between columns — a sidebar layout only works if the
-  sidebar always fits on one page.
+Routing uses `HashRouter` because GitHub Pages has no rewrite rules and a
+path-based deep link would 404 on refresh. `AppRoutes` is split from `App` so tests
+can mount the routes inside a `MemoryRouter`.
 
 Everything outside `src/pdf/` uses CSS Modules (`*.module.css`) with tokens
 defined on `:root` in `src/styles/global.css`.

@@ -1,0 +1,48 @@
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover:not(:disabled) {
+  background: rgb(121 210 181 / 12%);
+}
+
+.item:disabled {
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+.item[aria-current='step'] {
+  background: rgb(121 210 181 / 18%);
+  font-weight: 600;
+}
+
+.marker {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.75rem;
+}
+
+.item[aria-current='step'] .marker {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-surface);
+}

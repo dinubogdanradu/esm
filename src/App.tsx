@@ -1,17 +1,14 @@
-import styles from './App.module.css'
+import { HashRouter } from 'react-router-dom'
+import AppRoutes from '@/AppRoutes'
 
+/**
+ * HashRouter rather than BrowserRouter: GitHub Pages has no rewrite rules, so a
+ * path-based deep link like /build/projects would 404 on refresh.
+ */
 export default function App() {
   return (
-    <div className={styles.app}>
-      <main className={styles.card}>
-        <h1 className={styles.title}>
-          <span className={styles.accent}>CV</span> Builder
-        </h1>
-        <p className={styles.lead}>
-          Toolchain scaffold. The multi-step form, skill manager and PDF template
-          land in the phases described in docs/PLAN.md.
-        </p>
-      </main>
-    </div>
+    <HashRouter>
+      <AppRoutes />
+    </HashRouter>
   )
 }
