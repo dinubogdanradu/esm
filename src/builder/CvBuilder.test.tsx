@@ -67,6 +67,40 @@ describe('validation gating', () => {
     ).toBeVisible()
   })
 
+  test('advances after the required fields are typed in', async () => {
+    const user = userEvent.setup()
+    renderAt('/build/personal')
+
+    await user.type(screen.getByLabelText(/First name/), 'Ada')
+    await user.type(screen.getByLabelText(/Last name/), 'Lovelace')
+    await user.type(screen.getByLabelText(/Headline/), 'Senior Engineer')
+    await user.type(screen.getByLabelText(/Email/), 'ada@example.com')
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Profile summary' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  test('reports a malformed email rather than advancing', async () => {
+    const user = userEvent.setup()
+    renderAt('/build/personal')
+
+    await user.type(screen.getByLabelText(/First name/), 'Ada')
+    await user.type(screen.getByLabelText(/Last name/), 'Lovelace')
+    await user.type(screen.getByLabelText(/Headline/), 'Senior Engineer')
+    await user.type(screen.getByLabelText(/Email/), 'ada@')
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(
+      await screen.findByText('Enter a valid email address'),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('heading', { name: 'Personal details' }),
+    ).toBeVisible()
+  })
+
   test('advances once the step is valid', async () => {
     seedDraft({ personal: validPersonal })
     const user = userEvent.setup()

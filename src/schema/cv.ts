@@ -13,6 +13,15 @@ export type LanguageLevel = (typeof LANGUAGE_LEVELS)[number]
 export const SKILL_LEVEL_MIN = 1
 export const SKILL_LEVEL_MAX = 5
 
+/** Index 0 is level 1. Shared by the form select and the PDF template. */
+export const SKILL_LEVEL_LABELS = [
+  'Familiar',
+  'Working knowledge',
+  'Proficient',
+  'Advanced',
+  'Expert',
+] as const
+
 // Optional fields are empty strings rather than undefined so every text input
 // stays controlled. "Absent" is therefore '' throughout, and the PDF template
 // treats empty as omitted.

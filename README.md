@@ -6,12 +6,11 @@ updating beside the form as you type.
 
 ## Status
 
-In development. Phases 0 and 1 of [docs/PLAN.md](docs/PLAN.md) are complete: the
-Vite + TypeScript toolchain, the zod data model, and the nine-step form shell with
-validation gating and localStorage autosave. The per-step field UI, the skill
-manager and the PDF template are not built yet, so each step currently renders a
-placeholder listing the fields it will own. The upstream codebase this replaces
-sits in `legacy/` as reference and will be deleted once Phase 2 lands.
+In development, but end to end working: fill in the form, watch the live PDF preview
+update, download the result. Phases 0, 1, 2 and 4 of [docs/PLAN.md](docs/PLAN.md)
+are complete. Remaining: skill autocomplete and moving skills between groups
+(Phase 3), and the polish pass in Phase 5. The upstream codebase this replaces sits
+in `legacy/` as reference.
 
 ## What it does
 
@@ -21,10 +20,10 @@ sits in `legacy/` as reference and will be deleted once Phase 2 lands.
 - **Detailed skill management.** Skills are organised into user-defined
   categories (languages, frameworks, tools) with an optional proficiency level
   per skill and autocomplete from a preset catalog.
-- **Custom PDF template.** The CV is a real PDF with selectable, machine-readable
-  text and automatic multi-page flow, not a screenshot of the preview. The same
-  document definition drives both the preview and the download, so the two cannot
-  drift apart.
+- **Custom PDF template.** A landscape two-column layout with a blue header band,
+  rendered as a real PDF with selectable, machine-readable text and automatic
+  multi-page flow, not a screenshot of the preview. The same document definition
+  drives both the preview and the download, so the two cannot drift apart.
 - **Autosave.** Form state persists to localStorage, so a refresh does not lose
   a half-finished CV.
 

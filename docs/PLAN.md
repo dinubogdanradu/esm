@@ -129,12 +129,44 @@ Repeatable sections use `useFieldArray`. Nested arrays — achievement bullets
 inside a job — need a subcomponent per item scoped to the parent path. Reordering
 ships as up/down buttons; dnd-kit is a follow-on rather than a v1 blocker.
 
-## Phase 2: step forms
+## Phase 2: step forms (done)
 
-One component and one zod schema slice per step. Nine steps: the eight CV sections
-in the order below, then review and download. Sections render in the PDF in this
-same order, and an empty section is omitted entirely rather than printing a bare
-heading.
+Every step is now editable. Field primitives live in `src/components/fields/`
+(`TextField`, `TextAreaField`, `SelectField`, `CheckboxField`, `TagsField`,
+`PhotoField`), each built on `useController` so its own error and aria wiring come
+from one place. `src/components/RepeatableSection.tsx` wraps `useFieldArray` and
+supplies add, remove and move controls for every list-shaped section, including the
+nested cases (bullets inside a role, skills inside an expertise group).
+
+Decisions made while building it:
+
+- **Reordering is up/down buttons, not drag and drop,** as planned. They are
+  keyboard accessible for free, which a dnd-kit implementation would have to add
+  deliberately.
+- **`type="month"` inputs.** Chromium shows a real month picker; Firefox and Safari
+  fall back to a plain text box where the user types `YYYY-MM`, which the schema
+  regex then validates. The error message says "Use the month picker", which is
+  worth rewording if non-Chromium turns out to matter.
+- **Photos are downscaled to 512px on the longest edge** before entering form
+  state (`src/utils/image.ts`). Drafts autosave into localStorage, and a
+  full-resolution photo would exhaust that quota by itself. The canvas path falls
+  back to the original data URL when unavailable, and is not covered by tests
+  because jsdom does not implement canvas encoding.
+- **Ticking "I currently work here" clears and disables the end date,** so the
+  schema refinement and the UI cannot disagree.
+- **The review step summarises counts and flags missing required fields.** The
+  download button is deliberately absent rather than present-and-disabled, since
+  Phase 4 owns it.
+
+Verified: `npm run typecheck`, `npm test` (48 passed), `npm run build`, dev server
+transforming without errors. Tests drive real keyboard input through the field
+primitives, so the gating cases no longer need to seed localStorage.
+
+### Original specification
+
+Nine steps: the eight CV sections in the order below, then review and download.
+Sections render in the PDF in this same order, and an empty section is omitted
+entirely rather than printing a bare heading.
 
 ```ts
 type Cv = {
@@ -229,19 +261,89 @@ Assumptions worth overriding if wrong:
 
 ## Phase 3: skills manager
 
-The UI for the `expertise` array defined above — user-defined groups, reorderable,
-with the `exampleSkills` util from `legacy/utils/` grown into a typed per-category
-catalog for autocomplete. `showLevel` lets one group render as plain tags and
-another as rated.
+Phase 2 already made the `expertise` array fully editable: groups with a name and a
+`showLevel` toggle, nested reorderable skills, and a proficiency select that appears
+only for rated groups. What remains for this phase is the polish:
 
-The soft skills tag input in the Languages & Soft Skills step is deliberately not
-part of this: it is a flat list of names with no levels and no grouping.
+- Autocomplete backed by the `exampleSkills` util from `legacy/utils/`, grown into a
+  typed per-category catalog.
+- Moving a skill between groups, which the current up/down controls cannot do.
+- Optional: drag reordering via dnd-kit, replacing the buttons.
+
+The soft skills input in the Languages & Soft Skills step is deliberately not part
+of this: it is a flat list of names with no levels and no grouping.
 
 Open question for the template: proficiency as dots or bars looks better but is
 not machine-readable, whereas a text label ("Advanced") parses. To be decided
 alongside the template design.
 
-## Phase 4: PDF template
+## Phase 4: PDF template (done)
+
+Built from a supplied `CVPdfTemplate.jsx` that recreated a PowerPoint CV slide.
+That template was kept as the visual specification — landscape 960x600 page, blue
+header band, circular photo, white name pill, bordered card with section labels
+notched into the border, and the two-column split — but three things had to change
+before it could serve as a template:
+
+- **Content is now data-driven.** The original had every string hardcoded
+  (`profileBullets`, `studioBullets`, `personalProjects`, the name and email) and
+  took no props. `CvDocument` now takes a `Cv`, with all mapping in the pure
+  `src/pdf/model.ts`.
+- **Absolute positioning became flow layout.** Every element in the original was
+  `position: 'absolute'` at a fixed offset with a fixed-height card. With
+  user-supplied content of unknown length that clips or overlaps — the same failure
+  the html2canvas approach had, and the reason react-pdf was chosen. Sections are
+  now flex stacks that grow, with `wrap` and `minPresenceAhead` so overflow
+  paginates and headings do not orphan. A test renders 120 bullets and asserts the
+  page count grows rather than content vanishing.
+- **Fonts are bundled, not fetched.** The gstatic URLs in the original returned 404,
+  so its font registration would have failed at runtime. Roboto 400 and 700 are
+  vendored in `src/pdf/fonts/` and registered from bundled URLs.
+
+Schema mismatches resolved while mapping:
+
+- The template rendered the profile as bullets; the form collects one textarea. Each
+  non-empty line becomes a bullet, so a single-line summary reads as a paragraph.
+- The template split certifications into "Certifications" and "Trainings"
+  subheadings. The schema has one `certifications` array with no type
+  discriminator, so they render as one list. Adding a `kind` field would restore
+  the split.
+- **The deferred proficiency question is resolved:** rated groups render as
+  `Skill (Advanced)` using the shared `SKILL_LEVEL_LABELS`. Text, not dots, so the
+  PDF stays machine-readable; groups with `showLevel` off render as plain lists.
+- The template omitted dates on roles. Since the form collects them and a CV needs
+  them, each role renders a `location | date range` meta line.
+- Phone, website and LinkedIn were not in the original header; they now appear
+  alongside email and location.
+
+The Infosys logo is retained as `BRAND_LOGO` in `CvDocument.tsx`. It is static
+branding rather than CV data, so it currently appears on every generated CV — set
+the constant to null to drop it, or thread it through props to make it per-user.
+
+Preview and download:
+
+- `src/preview/usePdfBlobUrl.tsx` renders to a blob URL, debounced 500ms, keeping
+  the previous URL live until the next render succeeds so the pane never blanks
+  mid-edit, and revoking superseded URLs.
+- `PdfPreview` subscribes with `useWatch` itself, so keystrokes do not re-render the
+  form shell, and is `lazy`-loaded. react-pdf lands in its own 471 kB gzipped chunk
+  and the initial bundle stays at 113 kB.
+- Download regenerates rather than reusing the preview blob, so it always matches
+  current state even mid-render.
+
+Verified: `npm run typecheck`, `npm test` (81 passed), `npm run build`, and the dev
+server serving the modules, fonts and logo. The document tests render real PDFs via
+`renderToBuffer` in a node environment and assert the `%PDF` header, page counts,
+conditional second page, pagination under overflow, and an embedded font subset
+(proving selectable text rather than a raster image). They mock only the asset
+imports, which Vite resolves to URLs that node cannot read — that smoke test is what
+caught an unregistered italic font variant that would have failed in the browser.
+
+**Not automatically verified:** how the rendered PDF actually looks. The tests prove
+it renders, paginates and embeds text, not that the layout matches the slide. Run
+`npm run dev` and compare against the original before trusting the visual fidelity.
+
+### Original specification
 
 `src/pdf/` with `CvDocument.tsx`, a `theme.ts` of tokens (color, spacing scale,
 type scale) and one component per section.

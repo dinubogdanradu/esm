@@ -1,11 +1,15 @@
 import type { ComponentType } from 'react'
 import type { FieldPath } from 'react-hook-form'
 import type { Cv } from '@/schema/cv'
-import StepPlaceholder from './steps/StepPlaceholder'
-
-export type StepComponentProps = {
-  step: Step
-}
+import CertificationsStep from './steps/CertificationsStep'
+import ExperienceStep from './steps/ExperienceStep'
+import ExpertiseStep from './steps/ExpertiseStep'
+import LanguagesStep from './steps/LanguagesStep'
+import PersonalStep from './steps/PersonalStep'
+import ProfileStep from './steps/ProfileStep'
+import ProjectsStep from './steps/ProjectsStep'
+import QualificationsStep from './steps/QualificationsStep'
+import ReviewStep from './steps/ReviewStep'
 
 export type Step = {
   /** URL slug under /build/ */
@@ -16,9 +20,7 @@ export type Step = {
    * subtree, so one entry per section is enough.
    */
   validate: FieldPath<Cv>[]
-  /** Field names this step owns, shown by the placeholder until Phase 2. */
-  fields: string[]
-  Component: ComponentType<StepComponentProps>
+  Component: ComponentType
 }
 
 /**
@@ -31,99 +33,55 @@ export const STEPS: Step[] = [
     id: 'personal',
     title: 'Personal details',
     validate: ['personal'],
-    fields: [
-      'firstName',
-      'lastName',
-      'headline',
-      'location',
-      'email',
-      'phone',
-      'website',
-      'linkedin',
-      'photo',
-    ],
-    Component: StepPlaceholder,
+    Component: PersonalStep,
   },
   {
     id: 'profile',
     title: 'Profile summary',
     validate: ['profile'],
-    fields: ['summary'],
-    Component: StepPlaceholder,
+    Component: ProfileStep,
   },
   {
     id: 'qualifications',
     title: 'Qualifications',
     validate: ['qualifications'],
-    fields: [
-      'institution',
-      'degree',
-      'field',
-      'location',
-      'startDate',
-      'endDate',
-      'grade',
-    ],
-    Component: StepPlaceholder,
+    Component: QualificationsStep,
   },
   {
     id: 'expertise',
     title: 'Areas of expertise',
     validate: ['expertise'],
-    fields: ['group name', 'showLevel', 'skills[].name', 'skills[].level'],
-    Component: StepPlaceholder,
+    Component: ExpertiseStep,
   },
   {
     id: 'experience',
     title: 'Experience summary',
     validate: ['experience'],
-    fields: [
-      'company',
-      'position',
-      'location',
-      'startDate',
-      'endDate',
-      'current',
-      'bullets[]',
-      'tech[]',
-    ],
-    Component: StepPlaceholder,
+    Component: ExperienceStep,
   },
   {
     id: 'certifications',
     title: 'Certifications & Trainings',
     validate: ['certifications'],
-    fields: ['name', 'issuer', 'date', 'expiryDate', 'credentialUrl'],
-    Component: StepPlaceholder,
+    Component: CertificationsStep,
   },
   {
     id: 'languages',
     title: 'Languages & Soft Skills',
     validate: ['languages', 'softSkills'],
-    fields: ['languages[].name', 'languages[].level', 'softSkills[].name'],
-    Component: StepPlaceholder,
+    Component: LanguagesStep,
   },
   {
     id: 'projects',
     title: 'Projects',
     validate: ['projects'],
-    fields: [
-      'name',
-      'role',
-      'description',
-      'tech[]',
-      'url',
-      'startDate',
-      'endDate',
-    ],
-    Component: StepPlaceholder,
+    Component: ProjectsStep,
   },
   {
     id: 'review',
     title: 'Review & download',
     validate: [],
-    fields: [],
-    Component: StepPlaceholder,
+    Component: ReviewStep,
   },
 ]
 

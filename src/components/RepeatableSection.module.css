@@ -1,0 +1,86 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.empty {
+  padding: 1rem;
+  border: 1px dashed var(--color-muted);
+  border-radius: 0.5rem;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border: 1px solid rgb(31 41 51 / 12%);
+  border-radius: 0.5rem;
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.itemTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.itemActions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid rgb(31 41 51 / 18%);
+  border-radius: 0.3125rem;
+  background: var(--color-surface);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.iconButton:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.iconButton:disabled {
+  color: rgb(31 41 51 / 25%);
+  cursor: not-allowed;
+}
+
+.removeButton:hover {
+  border-color: #d1495b;
+  color: #d1495b;
+}
+
+.addButton {
+  align-self: flex-start;
+  padding: 0.4375rem 0.875rem;
+  border: 1px dashed var(--color-accent);
+  border-radius: 0.375rem;
+  background: none;
+  color: #17705a;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.addButton:hover {
+  background: rgb(121 210 181 / 14%);
+}
+
+.error {
+  color: #8c2f3c;
+  font-size: 0.75rem;
+}
