@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: layout.headerHeight,
     paddingHorizontal: layout.cardMargin,
-    paddingVertical: 8,
+    paddingVertical: 12,
     backgroundColor: colors.accent,
   },
   chevrons: {
@@ -66,11 +66,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   namePill: {
-    minWidth: 240,
-    marginBottom: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 18,
-    borderRadius: 16,
+    minWidth: 260,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 18,
     backgroundColor: colors.surface,
   },
   nameText: {
@@ -86,8 +86,8 @@ const styles = StyleSheet.create({
   contactRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    maxWidth: 420,
-    marginTop: 8,
+    maxWidth: 480,
+    marginTop: 10,
   },
   contactItem: {
     flexDirection: 'row',
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   logo: {
     width: layout.logoWidth,
     height: layout.logoHeight,
-    marginLeft: 18,
+    marginLeft: 20,
     objectFit: 'contain',
   },
 
@@ -112,9 +112,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     flexGrow: 1,
     marginHorizontal: layout.cardMargin,
-    marginTop: 22,
+    marginTop: 26,
     marginBottom: layout.cardMargin,
-    padding: 14,
+    padding: 16,
     backgroundColor: colors.cardFill,
     borderRadius: layout.cardRadius,
   },
@@ -166,8 +166,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    backgroundColor: colors.labelBg,
     borderRadius: 4,
+  },
+  labelBarDark: {
+    backgroundColor: colors.labelBgDark,
+  },
+  labelBarBlue: {
+    backgroundColor: colors.labelBgBlue,
   },
   labelDash: {
     width: 20,
@@ -182,8 +187,8 @@ const styles = StyleSheet.create({
   },
   /** Lifts the topmost label so it straddles the card's top edge, as in the slide. */
   labelOnBorder: {
-    marginTop: -20,
-    marginLeft: 4,
+    marginTop: -24,
+    marginLeft: 0,
   },
 
   body: {
@@ -249,14 +254,24 @@ function Bullet({ children }: { children: ReactNode }) {
 type SectionProps = {
   label: string
   onBorder?: boolean
+  variant?: 'dark' | 'blue'
   children: ReactNode
 }
 
-function Section({ label, onBorder, children }: SectionProps) {
+function Section({ label, onBorder, variant = 'blue', children }: SectionProps) {
+  const background =
+    variant === 'dark' ? styles.labelBarDark : styles.labelBarBlue
+
   return (
     // minPresenceAhead keeps a heading from being orphaned at the foot of a page.
     <View style={styles.section} minPresenceAhead={40}>
-      <View style={onBorder ? [styles.labelBar, styles.labelOnBorder] : styles.labelBar}>
+      <View
+        style={
+          onBorder
+            ? [styles.labelBar, background, styles.labelOnBorder]
+            : [styles.labelBar, background]
+        }
+      >
         <View style={styles.labelDash} />
         <Text style={styles.label}>{label}</Text>
       </View>
@@ -348,7 +363,7 @@ export default function CvDocument({ cv }: { cv: Cv }) {
           <View style={styles.columns}>
             <View style={styles.leftColumn}>
               {present.profile && (
-                <Section label="Profile summary" onBorder>
+                <Section label="Profile summary" onBorder variant="dark">
                   {profileBullets(cv.profile.summary).map((line) => (
                     <Bullet key={line}>{line}</Bullet>
                   ))}
@@ -367,6 +382,7 @@ export default function CvDocument({ cv }: { cv: Cv }) {
                 <Section
                   label="Areas of expertise"
                   onBorder={!present.profile && !present.qualifications}
+                  variant="dark"
                 >
                   {expertiseLines(cv).map((line) => (
                     <Text key={line.id} style={styles.body}>
@@ -412,7 +428,7 @@ export default function CvDocument({ cv }: { cv: Cv }) {
             <View style={styles.columns}>
               <View style={styles.leftColumn}>
                 {present.certifications && (
-                  <Section label="Certifications & Trainings" onBorder>
+                  <Section label="Certifications & Trainings" onBorder variant="dark">
                     {cv.certifications.map((entry) => (
                       <Bullet key={entry.id}>{certificationLine(entry)}</Bullet>
                     ))}

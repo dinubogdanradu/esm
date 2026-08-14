@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useWatch } from 'react-hook-form'
 import type { Cv } from '@/schema/cv'
 import { downloadPdf } from '@/preview/downloadPdf'
+import { downloadPptx } from '@/preview/downloadPptx'
 import styles from './steps.module.css'
 
 const count = (total: number, singular: string, plural = `${singular}s`) =>
@@ -68,9 +69,8 @@ export default function ReviewStep() {
           <li key={row.label} className={styles.summaryRow}>
             <span>{row.label}</span>
             <span
-              className={`${styles.summaryValue} ${
-                row.incomplete ? styles.incomplete : ''
-              }`}
+              className={`${styles.summaryValue} ${row.incomplete ? styles.incomplete : ''
+                }`}
             >
               {row.value}
             </span>
@@ -97,6 +97,21 @@ export default function ReviewStep() {
         }}
       >
         {isPreparing ? 'Preparing PDF…' : 'Download PDF'}
+      </button>
+
+      <button
+        type="button"
+        className={styles.download}
+        disabled={isPreparing}
+        onClick={() => {
+          setIsPreparing(true)
+          setFailure(null)
+          void downloadPptx(cv)
+            .catch(() => setFailure('The PPTX could not be generated.'))
+            .finally(() => setIsPreparing(false))
+        }}
+      >
+        {isPreparing ? 'Preparing PPTX…' : 'Download PPTX'}
       </button>
     </div>
   )

@@ -6,29 +6,31 @@
 export const PAGE_SIZE: [number, number] = [960, 600]
 
 export const colors = {
-  accent: '#0F9CD8',
-  navy: '#0b2540',
+  accent: '#007CC3',
+  navy: '#362451',
   text: '#000000',
   surface: '#ffffff',
-  /** Page backdrop is a soft blue-grey, not flat white. */
-  pageBg: '#eef4f9',
-  /** Section-label bar background. */
-  labelBg: '#33556e',
-  /** Content card fill (the card no longer has a hard border). */
-  cardFill: '#f1f3f6',
-  dashDivider: '#a9bac6',
-  /** Decorative header accent, colors lifted from the original slide's circles. */
-  accentLight: '#d5e5f8',
-  accentMid: '#8ab7ea',
+  /** Page backdrop — sampled from slide background. */
+  pageBg: '#FDFDFD',
+  /** Section-label bar background (sampled). */
+  labelBgDark: '#17375E',
+  /** PowerPoint accent1 with its 75% luminance modifier applied. */
+  labelBgBlue: '#3B618E',
+  /** Content card fill (sampled). */
+  cardFill: '#FDFDFD',
+  dashDivider: '#A9BAC6',
+  /** Decorative header accent variants derived from primary accent. */
+  accentLight: '#D5EAF8',
+  accentMid: '#7FB0E0',
 } as const
 
 export const layout = {
-  headerHeight: 146,
-  cardMargin: 26,
-  cardRadius: 30,
-  photoSize: 130,
-  logoWidth: 97,
-  logoHeight: 49,
+  headerHeight: 160,
+  cardMargin: 22,
+  cardRadius: 26,
+  photoSize: 140,
+  logoWidth: 120,
+  logoHeight: 60,
   /** Left column holds the narrow sections; right column holds experience. */
   leftColumnFlex: 40,
   rightColumnFlex: 60,
@@ -38,12 +40,12 @@ export const layout = {
 } as const
 
 export const type = {
-  name: 15,
-  headline: 13.5,
-  contact: 10,
-  label: 10,
-  entryTitle: 10,
-  body: 8,
+  name: 20,
+  headline: 14,
+  contact: 11,
+  label: 11,
+  entryTitle: 12,
+  body: 9,
 } as const
 
 export const FONT_FAMILY = 'Roboto'
