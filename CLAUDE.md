@@ -67,6 +67,22 @@ icon carried across needs converting to an ESM import.
 - **Optional means empty string, never `undefined`.** Every text field is a
   `string`, so inputs stay controlled and rehydrated drafts cannot break them.
   Optional URLs and dates are modelled as `z.union([z.literal(''), ...])`.
+- **`src/schema/skills.md` is the skill hierarchy,** parsed at module load by
+  `skillCatalog.ts` (`?raw` import, no codegen). Edit that file to change the groups;
+  nothing else needs touching. A node with sub-items is a heading, so skills attach
+  only to *containers*: level-1/level-2 leaves are **open** (user types skill names)
+  and a level-2 node with framework children is **predefined** (its children are
+  checkboxes). Container keys are `string`, validated by `refine` against the catalog
+  rather than by the compiler, because literals cannot be inferred from a parsed file.
+- **`selected` exists at both levels of expertise** — on the container and on each
+  skill — and decides what reaches the CV. All containers and all predefined options
+  always exist in form state, so anything counting them must filter on `selected`.
+  Requirements live in a `superRefine` on `expertiseGroupSchema` and apply only to
+  checked things; a field-level `required` would block the step over an unchecked
+  group's leftover data.
+- **Errors on an array or object rather than an input** need `messageAtPath` from
+  `src/components/fieldErrors.ts`; `useController` never surfaces them.
+  `RepeatableSection` does this for its own array, but a custom container must too.
 - **`src/builder/steps.ts`** — `STEPS` is the single source of step order, titles,
   and validation scope. The progress nav, next/back and PDF section order all
   derive from it, so adding a section means adding an entry there. `validate` holds

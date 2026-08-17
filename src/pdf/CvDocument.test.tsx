@@ -57,15 +57,29 @@ const populated = (): Cv => {
       grade: '',
     },
   ]
-  cv.expertise = [
+  const phpGroup = cv.expertise.find((group) => group.key === 'Programming > PHP')
+  if (!phpGroup) throw new Error('PHP container missing from the catalog')
+  phpGroup.selected = true
+  phpGroup.skills = [
     {
-      id: 'g1',
-      name: 'Languages',
-      showLevel: false,
-      skills: [
-        { id: 's1', name: 'PHP', level: 5 },
-        { id: 's2', name: 'JavaScript', level: 4 },
-      ],
+      id: 's1',
+      name: 'Drupal',
+      selected: true,
+      level: 5,
+      experienceYears: 12,
+      experienceMonths: 3,
+      lastUsed: 'Within last month',
+      certificationLinks: [{ id: 'l1', url: 'https://example.com/drupal-cert' }],
+    },
+    {
+      id: 's2',
+      name: 'Laravel',
+      selected: true,
+      level: 4,
+      experienceYears: 4,
+      experienceMonths: 0,
+      lastUsed: 'Within last year',
+      certificationLinks: [],
     },
   ]
   cv.experience = [

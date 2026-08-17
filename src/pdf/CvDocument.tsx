@@ -198,6 +198,12 @@ const styles = StyleSheet.create({
   strong: {
     fontWeight: 700,
   },
+  /** Certification URLs under an expertise group; restyle freely. */
+  expertiseLink: {
+    marginLeft: 8,
+    color: colors.accent,
+    fontSize: type.body,
+  },
   bullet: {
     flexDirection: 'row',
     marginBottom: 2,
@@ -385,10 +391,17 @@ export default function CvDocument({ cv }: { cv: Cv }) {
                   variant="dark"
                 >
                   {expertiseLines(cv).map((line) => (
-                    <Text key={line.id} style={styles.body}>
-                      <Text style={styles.strong}>{line.label}: </Text>
-                      {line.value}
-                    </Text>
+                    <View key={line.key}>
+                      <Text style={styles.body}>
+                        <Text style={styles.strong}>{line.label}: </Text>
+                        {line.value}
+                      </Text>
+                      {line.links.map((link) => (
+                        <Text key={link} style={styles.expertiseLink}>
+                          {link}
+                        </Text>
+                      ))}
+                    </View>
                   ))}
                 </Section>
               )}

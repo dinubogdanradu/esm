@@ -6,27 +6,8 @@ import {
   type FieldArrayPath,
 } from 'react-hook-form'
 import type { Cv } from '@/schema/cv'
+import { messageAtPath } from './fieldErrors'
 import styles from './RepeatableSection.module.css'
-
-/**
- * Reads an error message out of the nested errors object by dotted path, since
- * react-hook-form does not export its own path getter.
- */
-const messageAtPath = (errors: unknown, path: string): string | undefined => {
-  let node: unknown = errors
-
-  for (const segment of path.split('.')) {
-    if (typeof node !== 'object' || node === null) return undefined
-    node = (node as Record<string, unknown>)[segment]
-  }
-
-  if (typeof node !== 'object' || node === null || !('message' in node)) {
-    return undefined
-  }
-
-  const { message } = node as { message?: unknown }
-  return typeof message === 'string' ? message : undefined
-}
 
 type RepeatableSectionProps<TName extends FieldArrayPath<Cv>> = {
   name: TName

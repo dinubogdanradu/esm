@@ -1,5 +1,12 @@
-import { cvSchema, experienceSchema, personalSchema } from './cv'
-import { blankExperience, defaultCv } from './defaults'
+import {
+  cvSchema,
+  experienceSchema,
+  expertiseGroupSchema,
+  personalSchema,
+  type ExpertiseGroup,
+  type Skill,
+} from './cv'
+import { blankExperience, blankSkill, defaultCv } from './defaults'
 
 describe('personalSchema', () => {
   const valid = {
@@ -95,6 +102,124 @@ describe('experienceSchema', () => {
 
     expect(result.success).toBe(false)
   })
+})
+
+describe('expertiseGroupSchema', () => {
+  const group = (overrides: Partial<ExpertiseGroup> = {}): ExpertiseGroup => ({
+    key: 'Programming > Java',
+    selected: true,
+    skills: [],
+    ...overrides,
+  })
+
+  const skill = (overrides: Partial<Skill> = {}): Skill => ({
+    ...blankSkill(),
+    name: 'Spring',
+    lastUsed: 'Within last month',
+    ...overrides,
+  })
+
+  test('an unchecked group is valid however incomplete its skills are', () => {
+    const result = expertiseGroupSchema.safeParse(
+      group({
+        selected: false,
+        skills: [
+          skill({ name: '', lastUsed: '', certificationLinks: [{ id: 'l1', url: 'nope' }] }),
+        ],
+      }),
+    )
+
+    expect(result.success).toBe(true)
+  })
+
+  test('a checked group needs at least one selected skill', () => {
+    expect(expertiseGroupSchema.safeParse(group({ skills: [] })).success).toBe(false)
+
+    const allUnchecked = expertiseGroupSchema.safeParse(
+      group({ skills: [skill({ selected: false })] }),
+    )
+    expect(allUnchecked.success).toBe(false)
+    expect(allUnchecked.error?.issues[0]?.path).toEqual(['skills'])
+  })
+
+  test('unchecked skills inside a checked group are not validated', () => {
+    const result = expertiseGroupSchema.safeParse(
+      group({
+        skills: [
+          skill(),
+          skill({ name: '', lastUsed: '', selected: false }),
+        ],
+      }),
+    )
+
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects a group key that is not a catalog container', () => {
+    expect(expertiseGroupSchema.safeParse(group({ key: 'Programming' })).success).toBe(
+      false,
+    )
+    expect(expertiseGroupSchema.safeParse(group({ key: 'Cloud' })).success).toBe(false)
+  })
+
+  test('a checked group requires a name and a recency per skill', () => {
+    const result = expertiseGroupSchema.safeParse(
+      group({ skills: [skill({ name: '  ', lastUsed: '' })] }),
+    )
+
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.map((issue) => issue.path)).toEqual([
+      ['skills', 0, 'name'],
+      ['skills', 0, 'lastUsed'],
+    ])
+  })
+
+  test('a fully filled checked group is valid', () => {
+    const result = expertiseGroupSchema.safeParse(
+      group({
+        skills: [
+          skill({
+            experienceYears: 5,
+            experienceMonths: 6,
+            certificationLinks: [{ id: 'l1', url: 'https://example.com/cert' }],
+          }),
+        ],
+      }),
+    )
+
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects a blank or malformed certification link', () => {
+    expect(
+      expertiseGroupSchema.safeParse(
+        group({ skills: [skill({ certificationLinks: [{ id: 'l1', url: '' }] })] }),
+      ).success,
+    ).toBe(false)
+
+    expect(
+      expertiseGroupSchema.safeParse(
+        group({
+          skills: [skill({ certificationLinks: [{ id: 'l1', url: 'not a url' }] })],
+        }),
+      ).success,
+    ).toBe(false)
+  })
+
+  test('caps the month remainder at 11 so it cannot restate whole years', () => {
+    expect(
+      expertiseGroupSchema.safeParse(
+        group({ skills: [skill({ experienceMonths: 11 })] }),
+      ).success,
+    ).toBe(true)
+
+    expect(
+      expertiseGroupSchema.safeParse(
+        group({ skills: [skill({ experienceMonths: 12 })] }),
+      ).success,
+    ).toBe(false)
+  })
+
 })
 
 describe('cvSchema', () => {

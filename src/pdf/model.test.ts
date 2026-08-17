@@ -1,5 +1,5 @@
-import { defaultCv } from '@/schema/defaults'
-import type { Cv } from '@/schema/cv'
+import { blankSkill, defaultCv } from '@/schema/defaults'
+import type { Cv, Skill } from '@/schema/cv'
 import {
   certificationLine,
   contactLines,
@@ -7,6 +7,7 @@ import {
   experienceEntries,
   expertiseLines,
   formatDateRange,
+  formatExperience,
   formatMonthYear,
   hasSecondPageContent,
   presentSections,
@@ -103,38 +104,105 @@ describe('qualificationLine', () => {
   })
 })
 
+describe('formatExperience', () => {
+  test('renders whichever parts are non-zero', () => {
+    expect(formatExperience(5, 6)).toBe('5y 6m')
+    expect(formatExperience(5, 0)).toBe('5y')
+    expect(formatExperience(0, 6)).toBe('6m')
+    expect(formatExperience(0, 0)).toBe('')
+  })
+})
+
 describe('expertiseLines', () => {
-  const withExpertise = (showLevel: boolean): Cv => {
+  const skill = (overrides: Partial<Skill>): Skill => ({
+    ...blankSkill(),
+    ...overrides,
+  })
+
+  const withJava = (skills: Skill[], selected = true): Cv => {
     const cv = defaultCv()
-    cv.expertise = [
-      {
-        id: 'g1',
-        name: 'Languages',
-        showLevel,
-        skills: [
-          { id: 's1', name: 'TypeScript', level: 5 },
-          { id: 's2', name: 'Go', level: 3 },
-          { id: 's3', name: '  ', level: 3 },
-        ],
-      },
-    ]
+    const group = cv.expertise.find((entry) => entry.key === 'Programming > Java')
+    if (!group) throw new Error('Java container missing from the catalog')
+    group.selected = selected
+    group.skills = skills
     return cv
   }
 
-  test('appends the level label when the group is rated', () => {
-    expect(expertiseLines(withExpertise(true))[0]?.value).toBe(
-      'TypeScript (Expert), Go (Proficient)',
+  test('includes proficiency, experience and recency for each skill', () => {
+    const cv = withJava([
+      skill({
+        name: 'Spring',
+        level: 5,
+        experienceYears: 5,
+        experienceMonths: 6,
+        lastUsed: 'Within last month',
+      }),
+    ])
+
+    expect(expertiseLines(cv)[0]).toMatchObject({
+      key: 'Programming > Java',
+      // Labelled by the container, not its full catalog path.
+      label: 'Java',
+      value: 'Spring (Expert, 5y 6m, Within last month)',
+    })
+  })
+
+  test('excludes skills that are present but unchecked', () => {
+    const cv = withJava([
+      skill({ name: 'Spring', level: 5 }),
+      skill({ name: 'Struts', level: 2, selected: false }),
+    ])
+
+    expect(expertiseLines(cv)[0]?.value).toBe('Spring (Expert)')
+  })
+
+  test('omits detail parts that were not filled in', () => {
+    const cv = withJava([skill({ name: 'Hibernate', level: 4 })])
+
+    expect(expertiseLines(cv)[0]?.value).toBe('Hibernate (Advanced)')
+  })
+
+  test('separates multiple skills and skips unnamed ones', () => {
+    const cv = withJava([
+      skill({ name: 'Spring', level: 5 }),
+      skill({ name: '  ', level: 3 }),
+      skill({ name: 'Maven', level: 3 }),
+    ])
+
+    expect(expertiseLines(cv)[0]?.value).toBe(
+      'Spring (Expert); Maven (Proficient)',
     )
   })
 
-  test('omits levels when the group is not rated', () => {
-    expect(expertiseLines(withExpertise(false))[0]?.value).toBe('TypeScript, Go')
+  test('collects certification links across the group', () => {
+    const cv = withJava([
+      skill({
+        name: 'Spring',
+        certificationLinks: [
+          { id: 'l1', url: 'https://example.com/a' },
+          { id: 'l2', url: '   ' },
+        ],
+      }),
+      skill({
+        name: 'Maven',
+        certificationLinks: [{ id: 'l3', url: 'https://example.com/b' }],
+      }),
+    ])
+
+    expect(expertiseLines(cv)[0]?.links).toEqual([
+      'https://example.com/a',
+      'https://example.com/b',
+    ])
   })
 
-  test('drops groups with no name and no skills', () => {
-    const cv = defaultCv()
-    cv.expertise = [{ id: 'g1', name: '', showLevel: false, skills: [] }]
+  test('excludes unchecked groups even when they hold skills', () => {
+    const cv = withJava([skill({ name: 'Spring' })], false)
+
     expect(expertiseLines(cv)).toEqual([])
+  })
+
+  test('excludes a checked group with nothing filled in', () => {
+    expect(expertiseLines(withJava([]))).toEqual([])
   })
 })
 

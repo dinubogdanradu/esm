@@ -6,6 +6,7 @@ import {
   type Project,
   type Qualification,
 } from '@/schema/cv'
+import { findContainer } from '@/schema/skillCatalog'
 
 const MONTHS = [
   'Jan',
@@ -67,30 +68,53 @@ export const qualificationLine = (entry: Qualification): string => {
   return join([degree, place, dates, entry.grade], ', ')
 }
 
+/** "5y 6m", "5y", "6m", or empty when no experience was entered. */
+export const formatExperience = (years: number, months: number): string =>
+  join([years > 0 ? `${years}y` : '', months > 0 ? `${months}m` : ''], ' ')
+
 export type ExpertiseLine = {
-  id: string
+  key: string
   label: string
   value: string
+  /** Certification URLs across every skill in the group. */
+  links: string[]
 }
 
 export const expertiseLines = (cv: Cv): ExpertiseLine[] =>
   cv.expertise
-    .map((group) => ({
-      id: group.id,
-      label: group.name.trim(),
-      value: group.skills
-        .filter((skill) => isFilled(skill.name))
-        .map((skill) =>
-          group.showLevel
-            ? `${skill.name.trim()} (${SKILL_LEVEL_LABELS[skill.level - 1] ?? ''})`.replace(
-                ' ()',
-                '',
-              )
-            : skill.name.trim(),
-        )
-        .join(', '),
-    }))
-    .filter((line) => isFilled(line.label) || isFilled(line.value))
+    .filter((group) => group.selected)
+    .map((group) => {
+      const skills = group.skills.filter(
+        (skill) => skill.selected && isFilled(skill.name),
+      )
+
+      return {
+        key: group.key,
+        label: findContainer(group.key)?.name ?? group.key,
+        value: skills
+          .map((skill) => {
+            const detail = join(
+              [
+                SKILL_LEVEL_LABELS[skill.level - 1],
+                formatExperience(skill.experienceYears, skill.experienceMonths),
+                skill.lastUsed,
+              ],
+              ', ',
+            )
+
+            return detail === ''
+              ? skill.name.trim()
+              : `${skill.name.trim()} (${detail})`
+          })
+          .join('; '),
+        links: skills.flatMap((skill) =>
+          skill.certificationLinks
+            .map((link) => link.url.trim())
+            .filter(isFilled),
+        ),
+      }
+    })
+    .filter((line) => isFilled(line.value) || line.links.length > 0)
 
 export type ExperienceEntry = {
   id: string
