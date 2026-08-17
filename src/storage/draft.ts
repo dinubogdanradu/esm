@@ -26,12 +26,12 @@ import {
   newId,
   predefinedSkill,
 } from '@/schema/defaults'
-import { SKILL_CONTAINERS } from '@/schema/skillCatalog'
+import { EXPERTISE_ENTRIES } from '@/schema/skillCatalog'
 
 // Bump when a shape change makes older drafts unreadable; stale keys are ignored
-// rather than migrated. v3 replaced the flat group catalog with the hierarchy read
-// from skills.md, keying groups by container path and adding per-skill selection.
-export const DRAFT_KEY = 'cv-builder:draft:v3'
+// rather than migrated. v4 made level-1 headings selectable in their own right, so
+// the entry list and therefore the stored key set changed again.
+export const DRAFT_KEY = 'cv-builder:draft:v4'
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -110,29 +110,30 @@ const toSkill = (raw: unknown, defaultSelected: boolean): Skill => {
 
 /**
  * Rebuilds the catalog from skills.md rather than trusting stored keys, so editing
- * that file resolves cleanly: containers it no longer lists are dropped and new ones
+ * that file resolves cleanly: entries it no longer lists are dropped and new ones
  * appear empty. Predefined options are rebuilt from the catalog and matched to
- * stored entries by name, so a renamed framework loses only its own attributes.
+ * stored skills by name, so a renamed framework loses only its own attributes.
  */
 const toExpertiseGroups = (raw: unknown): ExpertiseGroup[] => {
   const stored = asArray(raw).map(asRecord)
 
-  return SKILL_CONTAINERS.map((container) => {
-    const match = stored.find((group) => group.key === container.key)
+  return EXPERTISE_ENTRIES.map((entry) => {
+    const match = stored.find((group) => group.key === entry.key)
     const storedSkills = asArray(match?.skills).map(asRecord)
 
-    const skills =
-      container.options.length > 0
-        ? container.options.map((option) => {
+    const skills = entry.holdsSkills
+      ? entry.options.length > 0
+        ? entry.options.map((option) => {
             const found = storedSkills.find((skill) => skill.name === option)
             return found
               ? { ...toSkill(found, false), name: option }
               : predefinedSkill(option)
           })
         : storedSkills.map((skill) => toSkill(skill, true))
+      : []
 
     return {
-      key: container.key,
+      key: entry.key,
       selected: asBool(match?.selected, false),
       skills,
     }

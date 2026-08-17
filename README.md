@@ -24,6 +24,8 @@ in `legacy/` as reference.
   rendered as a real PDF with selectable, machine-readable text and automatic
   multi-page flow, not a screenshot of the preview. The same document definition
   drives both the preview and the download, so the two cannot drift apart.
+- **PowerPoint export.** The same CV also exports as a .pptx deck, built from the
+  same view model as the PDF.
 - **Autosave.** Form state persists to localStorage, so a refresh does not lose
   a half-finished CV.
 

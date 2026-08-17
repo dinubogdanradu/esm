@@ -119,10 +119,14 @@ describe('expertiseLines', () => {
     ...overrides,
   })
 
-  const withJava = (skills: Skill[], selected = true): Cv => {
+  // The parent group has to be checked too, since an entry under an unchecked
+  // parent is not on the CV.
+  const withJava = (skills: Skill[], selected = true, parentSelected = true): Cv => {
     const cv = defaultCv()
+    const programming = cv.expertise.find((entry) => entry.key === 'Programming')
     const group = cv.expertise.find((entry) => entry.key === 'Programming > Java')
-    if (!group) throw new Error('Java container missing from the catalog')
+    if (!programming || !group) throw new Error('catalog entries missing')
+    programming.selected = parentSelected
     group.selected = selected
     group.skills = skills
     return cv
@@ -203,6 +207,18 @@ describe('expertiseLines', () => {
 
   test('excludes a checked group with nothing filled in', () => {
     expect(expertiseLines(withJava([]))).toEqual([])
+  })
+
+  test('excludes a checked technology whose group is unchecked', () => {
+    const cv = withJava([skill({ name: 'Spring' })], true, false)
+
+    expect(expertiseLines(cv)).toEqual([])
+  })
+
+  test('never emits a line for a group that only holds sub-items', () => {
+    const cv = withJava([skill({ name: 'Spring' })])
+
+    expect(expertiseLines(cv).map((line) => line.label)).toEqual(['Java'])
   })
 })
 

@@ -1,4 +1,4 @@
-import { SKILL_CONTAINERS } from './skillCatalog'
+import { EXPERTISE_ENTRIES } from './skillCatalog'
 import type {
   Bullet,
   Certification,
@@ -57,15 +57,16 @@ export const predefinedSkill = (name: string): Skill => ({
 })
 
 /**
- * Every container in the catalog always exists in form state; `selected` decides
- * whether it appears on the CV. Containers with predefined options are seeded with
- * one entry per option so that unchecking one keeps whatever was typed for it.
+ * Every selectable catalog node always exists in form state, in catalog order, so
+ * `expertise[i]` lines up with `EXPERTISE_ENTRIES[i]`. `selected` decides what
+ * appears on the CV. Nodes with predefined options are seeded with one skill per
+ * option so unchecking one keeps whatever was typed for it.
  */
 export const defaultExpertiseGroups = (): ExpertiseGroup[] =>
-  SKILL_CONTAINERS.map((container) => ({
-    key: container.key,
+  EXPERTISE_ENTRIES.map((entry) => ({
+    key: entry.key,
     selected: false,
-    skills: container.options.map(predefinedSkill),
+    skills: entry.options.map(predefinedSkill),
   }))
 
 export const blankBullet = (): Bullet => ({

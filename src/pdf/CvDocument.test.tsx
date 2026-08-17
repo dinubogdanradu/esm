@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { vi } from 'vitest'
-import { defaultCv } from '@/schema/defaults'
+import { blankSkill, defaultCv } from '@/schema/defaults'
 import type { Cv } from '@/schema/cv'
+import { selectEntry } from '@/test/expertise'
 
 // Vite turns asset imports into URL strings, which react-pdf cannot resolve under
 // node. Only those imports are swapped for filesystem paths — the real
@@ -57,14 +58,13 @@ const populated = (): Cv => {
       grade: '',
     },
   ]
-  const phpGroup = cv.expertise.find((group) => group.key === 'Programming > PHP')
-  if (!phpGroup) throw new Error('PHP container missing from the catalog')
-  phpGroup.selected = true
-  phpGroup.skills = [
+  // A technology only reaches the CV when its parent group is checked too.
+  selectEntry(cv, 'Programming')
+  selectEntry(cv, 'Programming > PHP', [
     {
+      ...blankSkill(),
       id: 's1',
       name: 'Drupal',
-      selected: true,
       level: 5,
       experienceYears: 12,
       experienceMonths: 3,
@@ -72,16 +72,14 @@ const populated = (): Cv => {
       certificationLinks: [{ id: 'l1', url: 'https://example.com/drupal-cert' }],
     },
     {
+      ...blankSkill(),
       id: 's2',
       name: 'Laravel',
-      selected: true,
       level: 4,
       experienceYears: 4,
-      experienceMonths: 0,
       lastUsed: 'Within last year',
-      certificationLinks: [],
     },
-  ]
+  ])
   cv.experience = [
     {
       id: 'e1',

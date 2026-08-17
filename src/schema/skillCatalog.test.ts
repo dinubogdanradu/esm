@@ -1,10 +1,12 @@
 import {
-  CONTAINER_GROUPS,
-  SKILL_CONTAINERS,
+  EXPERTISE_ENTRIES,
   SKILL_TREE,
-  buildContainers,
-  findContainer,
-  isKnownContainer,
+  TOP_LEVEL_ENTRIES,
+  buildEntries,
+  childEntries,
+  entryIndex,
+  findEntry,
+  isKnownEntry,
   parseSkillTree,
 } from './skillCatalog'
 
@@ -45,54 +47,64 @@ describe('parseSkillTree', () => {
   })
 })
 
-describe('buildContainers', () => {
-  test('a level-1 leaf becomes its own container with no options', () => {
-    const containers = buildContainers(parseSkillTree('# Infrastructure'))
-
-    expect(containers).toEqual([
+describe('buildEntries', () => {
+  test('a level-1 leaf holds skills itself', () => {
+    expect(buildEntries(parseSkillTree('# Infrastructure'))).toEqual([
       {
         key: 'Infrastructure',
-        group: 'Infrastructure',
         name: 'Infrastructure',
+        depth: 1,
+        parentKey: null,
+        childKeys: [],
         options: [],
+        holdsSkills: true,
       },
     ])
   })
 
-  test('a level-2 leaf becomes an open container under its group', () => {
-    const containers = buildContainers(
+  test('a level-1 node with sub-items is selectable but holds no skills', () => {
+    const [group, child] = buildEntries(
       parseSkillTree(['# Programming', '## Java'].join('\n')),
     )
 
-    expect(containers).toEqual([
-      {
-        key: 'Programming > Java',
-        group: 'Programming',
-        name: 'Java',
-        options: [],
-      },
-    ])
-  })
-
-  test('a level-2 node with children exposes them as predefined options', () => {
-    const containers = buildContainers(
-      parseSkillTree(['# Programming', '## Node.js', '### React', '### Vue'].join('\n')),
-    )
-
-    expect(containers[0]).toMatchObject({
-      key: 'Programming > Node.js',
-      options: ['React', 'Vue'],
+    expect(group).toMatchObject({
+      key: 'Programming',
+      depth: 1,
+      childKeys: ['Programming > Java'],
+      holdsSkills: false,
+    })
+    expect(child).toMatchObject({
+      key: 'Programming > Java',
+      name: 'Java',
+      depth: 2,
+      parentKey: 'Programming',
+      options: [],
+      holdsSkills: true,
     })
   })
 
-  test('a level-1 node with children is a header, not a container', () => {
-    const containers = buildContainers(
-      parseSkillTree(['# Programming', '## Java'].join('\n')),
+  test('a level-2 node with children exposes them as predefined options', () => {
+    const entries = buildEntries(
+      parseSkillTree(['# Programming', '## Node.js', '### React', '### Vue'].join('\n')),
     )
 
-    expect(containers.map((container) => container.key)).not.toContain('Programming')
+    expect(findFrom(entries, 'Programming > Node.js')).toMatchObject({
+      options: ['React', 'Vue'],
+      holdsSkills: true,
+    })
+  })
+
+  test('lists each group immediately before its children', () => {
+    const entries = buildEntries(
+      parseSkillTree(['# A', '## A1', '## A2', '# B'].join('\n')),
+    )
+
+    expect(entries.map((entry) => entry.key)).toEqual(['A', 'A > A1', 'A > A2', 'B'])
   })
 })
+
+const findFrom = (entries: ReturnType<typeof buildEntries>, key: string) =>
+  entries.find((entry) => entry.key === key)
 
 describe('the catalog read from skills.md', () => {
   test('exposes the documented top-level groups in file order', () => {
@@ -107,51 +119,24 @@ describe('the catalog read from skills.md', () => {
     ])
   })
 
-  test('treats language entries as open containers', () => {
-    expect(findContainer('Programming > Java')?.options).toEqual([])
-    expect(findContainer('Programming > C# / .NET')?.options).toEqual([])
-  })
-
-  test('treats Node.js and Mobile development as predefined containers', () => {
-    expect(findContainer('Programming > Node.js')?.options).toEqual([
-      'React',
-      'Angular',
-      'Vue',
-    ])
-    expect(findContainer('Programming > Mobile development')?.options).toEqual([
-      'React Native',
-      'Flutter',
-      'Kotlin',
-      'Swift',
-    ])
-  })
-
-  test('exposes level-1 leaves as containers in their own right', () => {
-    for (const key of [
+  test('every level-1 heading is selectable, sub-items or not', () => {
+    expect(TOP_LEVEL_ENTRIES.map((entry) => entry.name)).toEqual([
+      'Programming',
       'Infrastructure',
       'Data engineering',
       'Testing',
       'Security',
       'Management',
       'AI',
-    ]) {
-      expect(isKnownContainer(key)).toBe(true)
-      expect(findContainer(key)?.options).toEqual([])
-    }
+    ])
+    expect(isKnownEntry('Programming')).toBe(true)
   })
 
-  test('rejects keys that are not containers', () => {
-    expect(isKnownContainer('Programming')).toBe(false)
-    expect(isKnownContainer('Programming > Node.js > React')).toBe(false)
-    expect(isKnownContainer('Cloud')).toBe(false)
-  })
+  test('Programming groups its technologies rather than holding skills', () => {
+    const programming = findEntry('Programming')
 
-  test('groups containers under their level-1 heading for the checkbox list', () => {
-    const programming = CONTAINER_GROUPS.find(
-      (entry) => entry.group === 'Programming',
-    )
-
-    expect(programming?.containers.map((container) => container.name)).toEqual([
+    expect(programming?.holdsSkills).toBe(false)
+    expect(childEntries(programming!).map((child) => child.name)).toEqual([
       'Java',
       'Python',
       'PHP',
@@ -162,6 +147,57 @@ describe('the catalog read from skills.md', () => {
       'Node.js',
       'Mobile development',
     ])
-    expect(SKILL_CONTAINERS).toHaveLength(15)
+  })
+
+  test('level-1 leaves hold skills directly', () => {
+    for (const key of [
+      'Infrastructure',
+      'Data engineering',
+      'Testing',
+      'Security',
+      'Management',
+      'AI',
+    ]) {
+      expect(findEntry(key)).toMatchObject({
+        holdsSkills: true,
+        childKeys: [],
+        options: [],
+      })
+    }
+  })
+
+  test('treats language entries as open containers', () => {
+    expect(findEntry('Programming > Java')?.options).toEqual([])
+    expect(findEntry('Programming > C# / .NET')?.options).toEqual([])
+  })
+
+  test('treats Node.js and Mobile development as predefined containers', () => {
+    expect(findEntry('Programming > Node.js')?.options).toEqual([
+      'React',
+      'Angular',
+      'Vue',
+    ])
+    expect(findEntry('Programming > Mobile development')?.options).toEqual([
+      'React Native',
+      'Flutter',
+      'Kotlin',
+      'Swift',
+    ])
+  })
+
+  test('rejects keys that are not selectable entries', () => {
+    expect(isKnownEntry('Programming > Node.js > React')).toBe(false)
+    expect(isKnownEntry('Cloud')).toBe(false)
+  })
+
+  test('entryIndex matches position in the entry list', () => {
+    EXPERTISE_ENTRIES.forEach((entry, index) => {
+      expect(entryIndex(entry.key)).toBe(index)
+    })
+    expect(entryIndex('Cloud')).toBe(-1)
+  })
+
+  test('has one entry per level-1 heading plus one per technology', () => {
+    expect(EXPERTISE_ENTRIES).toHaveLength(16)
   })
 })
