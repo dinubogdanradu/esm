@@ -16,9 +16,10 @@ import {
 } from '@/schema/cv'
 import { blankCertificationLink, blankSkill } from '@/schema/defaults'
 import {
-  CONTAINER_GROUPS,
-  SKILL_CONTAINERS,
-  type SkillContainer,
+  TOP_LEVEL_ENTRIES,
+  childEntries,
+  entryIndex,
+  type CatalogEntry,
 } from '@/schema/skillCatalog'
 import styles from './steps.module.css'
 
@@ -78,29 +79,27 @@ function SkillAttributes({ path }: { path: SkillPath }) {
         />
       </div>
 
-      <div className={styles.nested}>
-        <RepeatableSection
-          name={`${path}.certificationLinks`}
-          itemNoun="Certification link"
-          emptyMessage="No certification links for this skill."
-          makeItem={blankCertificationLink}
-        >
-          {(linkIndex) => (
-            <TextField
-              name={`${path}.certificationLinks.${linkIndex}.url`}
-              label="Certification URL"
-              type="url"
-              required
-            />
-          )}
-        </RepeatableSection>
-      </div>
+      <RepeatableSection
+        name={`${path}.certificationLinks`}
+        itemNoun="Certification link"
+        emptyMessage="No certification links for this skill."
+        makeItem={blankCertificationLink}
+      >
+        {(linkIndex) => (
+          <TextField
+            name={`${path}.certificationLinks.${linkIndex}.url`}
+            label="Certification URL"
+            type="url"
+            required
+          />
+        )}
+      </RepeatableSection>
     </>
   )
 }
 
-/** Level-1 and level-2 leaves: the user names each skill themselves. */
-function OpenContainer({ groupIndex }: { groupIndex: number }) {
+/** A node with no sub-items: the user names each skill themselves. */
+function OpenSkills({ groupIndex }: { groupIndex: number }) {
   return (
     <RepeatableSection
       name={`expertise.${groupIndex}.skills`}
@@ -124,10 +123,7 @@ function OpenContainer({ groupIndex }: { groupIndex: number }) {
   )
 }
 
-/**
- * Containers whose catalog entry has sub-items: the frameworks are the skills, so
- * they are checkboxes rather than free text, and checking one reveals its details.
- */
+/** A framework from the catalog: a checkbox that opens its own attributes. */
 function PredefinedSkill({
   groupIndex,
   skillIndex,
@@ -142,10 +138,10 @@ function PredefinedSkill({
   const path: SkillPath = `expertise.${groupIndex}.skills.${skillIndex}`
 
   return (
-    <div className={styles.stack}>
+    <div className={styles.node}>
       <CheckboxField name={`${path}.selected`} label={name} />
       {checked && (
-        <div className={styles.nested}>
+        <div className={styles.nodeBody} role="group" aria-label={name}>
           <SkillAttributes path={path} />
         </div>
       )}
@@ -153,23 +149,27 @@ function PredefinedSkill({
   )
 }
 
-function PredefinedContainer({
+/**
+ * A node whose sub-items are frameworks: those are the skills, so they are
+ * checkboxes rather than free text.
+ */
+function PredefinedSkills({
   groupIndex,
-  container,
+  options,
   skills,
 }: {
   groupIndex: number
-  container: SkillContainer
+  options: string[]
   skills: Cv['expertise'][number]['skills']
 }) {
-  // There is no RepeatableSection here to surface an error sitting on the skills
-  // array itself, such as "select at least one".
+  // No RepeatableSection here to surface an error sitting on the skills array
+  // itself, such as "select at least one".
   const { errors } = useFormState<Cv>({ name: `expertise.${groupIndex}.skills` })
-  const groupMessage = messageAtPath(errors, `expertise.${groupIndex}.skills`)
+  const message = messageAtPath(errors, `expertise.${groupIndex}.skills`)
 
   return (
-    <div className={styles.stack}>
-      {container.options.map((option, skillIndex) => (
+    <>
+      {options.map((option, skillIndex) => (
         <PredefinedSkill
           key={option}
           groupIndex={groupIndex}
@@ -178,82 +178,91 @@ function PredefinedContainer({
           checked={skills[skillIndex]?.selected === true}
         />
       ))}
-      {groupMessage && <p className={styles.error}>{groupMessage}</p>}
+      {message && <p className={styles.error}>{message}</p>}
+    </>
+  )
+}
+
+function SkillsFor({
+  entry,
+  groups,
+}: {
+  entry: CatalogEntry
+  groups: Cv['expertise']
+}) {
+  const index = entryIndex(entry.key)
+
+  return entry.options.length > 0 ? (
+    <PredefinedSkills
+      groupIndex={index}
+      options={entry.options}
+      skills={groups[index]?.skills ?? []}
+    />
+  ) : (
+    <OpenSkills groupIndex={index} />
+  )
+}
+
+/**
+ * One line of the tree: a checkbox, and when it is checked, its contents indented
+ * directly beneath it. A node with sub-items lists those as further checkboxes; a
+ * node without holds skills.
+ */
+function EntryNode({
+  entry,
+  groups,
+}: {
+  entry: CatalogEntry
+  groups: Cv['expertise']
+}) {
+  const index = entryIndex(entry.key)
+  const { errors } = useFormState<Cv>({ name: `expertise.${index}` })
+  const selected = groups[index]?.selected === true
+  const children = childEntries(entry)
+  const message = messageAtPath(errors, `expertise.${index}.selected`)
+
+  return (
+    <div className={styles.node}>
+      <CheckboxField
+        name={`expertise.${index}.selected`}
+        label={entry.name}
+      />
+
+      {selected && (
+        // aria-label rather than a fieldset legend: the checkbox already names this
+        // level, so a legend would repeat it.
+        <div className={styles.nodeBody} role="group" aria-label={entry.name}>
+          {children.length > 0 ? (
+            <>
+              {children.map((child) => (
+                <EntryNode key={child.key} entry={child} groups={groups} />
+              ))}
+              {message && <p className={styles.error}>{message}</p>}
+            </>
+          ) : (
+            <SkillsFor entry={entry} groups={groups} />
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function ContainerFieldset({
-  groupIndex,
-  container,
-  skills,
-}: {
-  groupIndex: number
-  container: SkillContainer
-  skills: Cv['expertise'][number]['skills']
-}) {
-  const heading =
-    container.group === container.name
-      ? container.name
-      : `${container.group} — ${container.name}`
-
-  return (
-    <fieldset className={styles.fieldset}>
-      <legend className={styles.legend}>{heading}</legend>
-      {container.options.length > 0 ? (
-        <PredefinedContainer
-          groupIndex={groupIndex}
-          container={container}
-          skills={skills}
-        />
-      ) : (
-        <OpenContainer groupIndex={groupIndex} />
-      )}
-    </fieldset>
-  )
-}
-
 export default function ExpertiseStep() {
-  const groups = useWatch<Cv>({ name: 'expertise' }) as Cv['expertise'] | undefined
+  const groups = (useWatch<Cv>({ name: 'expertise' }) ?? []) as Cv['expertise']
 
   return (
     <div className={styles.stack}>
-      <fieldset className={styles.fieldset}>
-        <legend className={styles.legend}>Skill groups</legend>
-        <p className={styles.fieldsetHint}>
-          Check a group to fill in its skills. Unchecked groups are left off the CV
-          but keep anything already entered.
-        </p>
+      <p className={styles.hint}>
+        Check a group to fill it in. Unchecked groups are left off the CV but keep
+        anything already entered.
+      </p>
 
-        {CONTAINER_GROUPS.map(({ group, containers }) => (
-          <div key={group} className={styles.checkboxGroup}>
-            {/* A level-1 leaf is its own container, so the heading would repeat. */}
-            {!(containers.length === 1 && containers[0]?.name === group) && (
-              <p className={styles.checkboxGroupTitle}>{group}</p>
-            )}
-            <div className={styles.checkboxGrid}>
-              {containers.map((container) => (
-                <CheckboxField
-                  key={container.key}
-                  name={`expertise.${SKILL_CONTAINERS.indexOf(container)}.selected`}
-                  label={container.name}
-                />
-              ))}
-            </div>
-          </div>
+      <div className={styles.tree}>
+        {TOP_LEVEL_ENTRIES.map((entry) => (
+          <EntryNode key={entry.key} entry={entry} groups={groups} />
         ))}
-      </fieldset>
-
-      {SKILL_CONTAINERS.map((container, index) =>
-        groups?.[index]?.selected ? (
-          <ContainerFieldset
-            key={container.key}
-            groupIndex={index}
-            container={container}
-            skills={groups[index]?.skills ?? []}
-          />
-        ) : null,
-      )}
+      </div>
     </div>
   )
 }

@@ -4,7 +4,8 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { vi } from 'vitest'
-import { defaultCv } from '@/schema/defaults'
+import { blankSkill, defaultCv } from '@/schema/defaults'
+import { selectEntry } from '@/test/expertise'
 
 const fontPath = (file: string) => ({ default: resolve('src/pdf/fonts', file) })
 
@@ -45,17 +46,29 @@ const populated = () => {
             grade: '',
         },
     ]
-    cv.expertise = [
+    // Expertise mirrors the skills.md catalog: check the group, then the technology
+    // under it, then fill in that technology's skills.
+    selectEntry(cv, 'Programming')
+    selectEntry(cv, 'Programming > PHP', [
         {
-            id: 'g1',
-            name: 'Languages',
-            showLevel: false,
-            skills: [
-                { id: 's1', name: 'PHP', level: 5 },
-                { id: 's2', name: 'JavaScript', level: 4 },
-            ],
+            ...blankSkill(),
+            id: 's1',
+            name: 'Drupal',
+            level: 5,
+            experienceYears: 12,
+            experienceMonths: 3,
+            lastUsed: 'Within last month',
+            certificationLinks: [{ id: 'l1', url: 'https://example.com/drupal-cert' }],
         },
-    ]
+        {
+            ...blankSkill(),
+            id: 's2',
+            name: 'Laravel',
+            level: 4,
+            experienceYears: 4,
+            lastUsed: 'Within last year',
+        },
+    ])
     cv.experience = [
         {
             id: 'e1',

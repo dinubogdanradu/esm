@@ -69,17 +69,25 @@ icon carried across needs converting to an ESM import.
   Optional URLs and dates are modelled as `z.union([z.literal(''), ...])`.
 - **`src/schema/skills.md` is the skill hierarchy,** parsed at module load by
   `skillCatalog.ts` (`?raw` import, no codegen). Edit that file to change the groups;
-  nothing else needs touching. A node with sub-items is a heading, so skills attach
-  only to *containers*: level-1/level-2 leaves are **open** (user types skill names)
-  and a level-2 node with framework children is **predefined** (its children are
-  checkboxes). Container keys are `string`, validated by `refine` against the catalog
-  rather than by the compiler, because literals cannot be inferred from a parsed file.
-- **`selected` exists at both levels of expertise** — on the container and on each
-  skill — and decides what reaches the CV. All containers and all predefined options
-  always exist in form state, so anything counting them must filter on `selected`.
-  Requirements live in a `superRefine` on `expertiseGroupSchema` and apply only to
-  checked things; a field-level `required` would block the step over an unchecked
-  group's leftover data.
+  nothing else needs touching. Levels 1 and 2 are both selectable: a level-1 node
+  with sub-items is a group whose children are checkboxes and which holds no skills;
+  a leaf at either level holds skills the user names; a level-2 node with framework
+  children holds those frameworks as checkbox skills. The step renders this as one
+  recursive checkbox tree (`EntryNode`), each level indented under its parent and
+  wrapped in a `div role="group" aria-label={name}` rather than a `fieldset`, since
+  the checkbox already names the level. `expertise[i]` lines up with
+  `EXPERTISE_ENTRIES[i]` — use `entryIndex(key)` to build form paths, never a local
+  map index. Entry keys are `string`, validated by `refine` against the catalog rather
+  than by the compiler, because literals cannot be inferred from a parsed file.
+- **`selected` exists at every level of expertise** — on each entry and on each skill
+  — and decides what reaches the CV. All entries and all predefined options always
+  exist in form state, so anything counting or rendering them must filter on
+  `selected`, and must also check that the parent entry is selected.
+- **Expertise validation lives on the array** (`expertiseSchema`), not per entry,
+  because the rules depend on neighbours: a group needs one checked child, and an
+  entry under an unchecked parent must not be validated since its fieldset is hidden.
+  Requirements apply only to checked things; a field-level `required` would block the
+  step over leftover data in something unchecked.
 - **Errors on an array or object rather than an input** need `messageAtPath` from
   `src/components/fieldErrors.ts`; `useController` never surfaces them.
   `RepeatableSection` does this for its own array, but a custom container must too.
@@ -127,8 +135,16 @@ icon carried across needs converting to an ESM import.
     every generated CV.
 - **`src/preview/`** — `usePdfBlobUrl` debounces rendering and revokes superseded
   blob URLs; `PdfPreview` is `lazy`-loaded and subscribes to form state itself so
-  keystrokes do not re-render the shell. Keep react-pdf behind dynamic imports or it
-  lands in the initial bundle.
+  keystrokes do not re-render the shell. Keep react-pdf and pptxgenjs behind dynamic
+  imports or they land in the initial bundle.
+  - **`downloadPptx.tsx` is a second exporter** (pptxgenjs, 10 x 6.25in deck) that
+    reads the same `src/pdf/model.ts` view model as the PDF. That shared model is what
+    keeps the two consistent, so a change there must be checked against both. Build it
+    with `buildPptx`, which is split out from `downloadPptx` so tests can render under
+    node; only the profile photo needs browser APIs. `pptxgenjs` has no document
+    language setting — `pptx.lang` and `theme.lang` do not exist.
+  - `mmmdownloadPptx.tsx` is an unused earlier copy of that exporter and should be
+    deleted rather than updated.
 
 Routing uses `HashRouter` because GitHub Pages has no rewrite rules and a
 path-based deep link would 404 on refresh. `AppRoutes` is split from `App` so tests
@@ -154,6 +170,12 @@ Both of these cost time to rediscover:
 Test config lives in the `test` key of `vite.config.ts`. `globals: true` is set,
 so `test`/`expect` need no import; jest-dom matchers and per-test cleanup come
 from `src/test/setup.ts`.
+
+Document-rendering tests (`CvDocument`, `downloadPptx`) run under
+`// @vitest-environment node` with `/// <reference types="node" />`, since
+`tsconfig.app.json` deliberately excludes node types from app code. Build expertise
+fixtures with `selectEntry` from `src/test/expertise.ts` — it checks the key against
+the catalog, and remember a technology needs its parent group selected too.
 
 Keep `@types/react` and `@types/react-dom` on the same major as the React runtime.
 npm will happily install types a major ahead, which produces type errors that look

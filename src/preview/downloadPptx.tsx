@@ -355,16 +355,33 @@ const addExpertise = (slide: Slide, cv: Cv) => {
     prefixSpaces: 3,
   })
 
+  // One line per catalog group, matching the PDF: "Java: Spring (Expert, 5y 6m,
+  // Within last month); Maven (Proficient)". Certification links follow on their own
+  // lines, as clickable hyperlinks since PowerPoint supports them.
   const lines = expertiseLines(cv)
   const runs: any[] = []
-  lines.forEach((line, index) => {
+  lines.forEach((line, lineIndex) => {
+    const lastLine = lineIndex === lines.length - 1
+
     runs.push({
       text: `${line.label}: `,
       options: { bold: true, bullet: { indent: 13.5 } },
     })
     runs.push({
       text: line.value,
-      options: { breakLine: index < lines.length - 1 },
+      options: { breakLine: line.links.length > 0 || !lastLine },
+    })
+
+    line.links.forEach((link, linkIndex) => {
+      const lastLink = linkIndex === line.links.length - 1
+      runs.push({
+        text: link,
+        options: {
+          color: C.header,
+          hyperlink: { url: link },
+          breakLine: !(lastLine && lastLink),
+        },
+      })
     })
   })
 
@@ -597,53 +614,67 @@ const addProjects = (slide: Slide, cv: Cv, hasTopColumns: boolean) => {
   })
 }
 
+export const pptxFileName = (cv: Cv): string => {
+  const slug = fullName(cv)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  return slug ? `${slug}-short-cv.pptx` : 'short-cv.pptx'
+}
+
+/**
+ * Assembles the presentation without writing it, so tests can render it under node
+ * via `pptx.write(...)`. Only the profile photo path needs browser APIs (canvas and
+ * fetch), and that is skipped when no photo is set.
+ */
+export const buildPptx = async (cv: Cv) => {
+  const module = await import('pptxgenjs')
+  const PptxGenJS = module.default
+  const pptx = new PptxGenJS()
+
+  pptx.defineLayout({ name: 'INFOSYS_CV_16_10', width: SLIDE_WIDTH, height: SLIDE_HEIGHT })
+  pptx.layout = 'INFOSYS_CV_16_10'
+  pptx.author = fullName(cv) || 'CV Builder'
+  pptx.subject = 'CV export'
+  pptx.title = fullName(cv) ? `${fullName(cv)} - short CV` : 'Short CV'
+  pptx.company = 'Infosys'
+  // pptxgenjs exposes no document language setting: PptxGenJS has no `lang`
+  // property and ThemeProps carries only the two font faces.
+  pptx.theme = {
+    headFontFace: 'Calibri',
+    bodyFontFace: 'Arial',
+  }
+
+  const present = presentSections(cv)
+  const firstPage = pptx.addSlide()
+  addMasterBackground(firstPage)
+  await addHeader(firstPage, cv)
+  addCard(firstPage, 0.266, 1.754, 9.533, 4.445)
+
+  if (present.profile) addProfile(firstPage, cv)
+  if (present.qualifications) addQualifications(firstPage, cv)
+  if (present.expertise) addExpertise(firstPage, cv)
+  if (present.experience) addExperience(firstPage, cv)
+
+  if (hasSecondPageContent(cv)) {
+    const secondPage = pptx.addSlide()
+    addMasterBackground(secondPage)
+    addCard(secondPage, 0.266, 0.528, 9.533, 5.594)
+
+    const hasTopColumns = present.certifications || present.languages || present.softSkills
+    if (present.certifications) addCertifications(secondPage, cv)
+    if (present.languages || present.softSkills) addLanguagesAndSkills(secondPage, cv)
+    if (present.projects) addProjects(secondPage, cv, hasTopColumns)
+  }
+
+  return pptx
+}
+
 export const downloadPptx = async (cv: Cv): Promise<void> => {
   try {
-    const module = await import('pptxgenjs')
-    const PptxGenJS = module.default
-    const pptx = new PptxGenJS()
-
-    pptx.defineLayout({ name: 'INFOSYS_CV_16_10', width: SLIDE_WIDTH, height: SLIDE_HEIGHT })
-    pptx.layout = 'INFOSYS_CV_16_10'
-    pptx.author = fullName(cv) || 'CV Builder'
-    pptx.subject = 'CV export'
-    pptx.title = fullName(cv) ? `${fullName(cv)} - short CV` : 'Short CV'
-    pptx.company = 'Infosys'
-    pptx.lang = 'en-US'
-    pptx.theme = {
-      headFontFace: 'Calibri',
-      bodyFontFace: 'Arial',
-      lang: 'en-US',
-    }
-
-    const present = presentSections(cv)
-    const firstPage = pptx.addSlide()
-    addMasterBackground(firstPage)
-    await addHeader(firstPage, cv)
-    addCard(firstPage, 0.266, 1.754, 9.533, 4.445)
-
-    if (present.profile) addProfile(firstPage, cv)
-    if (present.qualifications) addQualifications(firstPage, cv)
-    if (present.expertise) addExpertise(firstPage, cv)
-    if (present.experience) addExperience(firstPage, cv)
-
-    if (hasSecondPageContent(cv)) {
-      const secondPage = pptx.addSlide()
-      addMasterBackground(secondPage)
-      addCard(secondPage, 0.266, 0.528, 9.533, 5.594)
-
-      const hasTopColumns = present.certifications || present.languages || present.softSkills
-      if (present.certifications) addCertifications(secondPage, cv)
-      if (present.languages || present.softSkills) addLanguagesAndSkills(secondPage, cv)
-      if (present.projects) addProjects(secondPage, cv, hasTopColumns)
-    }
-
-    const slug = fullName(cv)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-
-    await pptx.writeFile({ fileName: slug ? `${slug}-short-cv.pptx` : 'short-cv.pptx' })
+    const pptx = await buildPptx(cv)
+    await pptx.writeFile({ fileName: pptxFileName(cv) })
   } catch (error: unknown) {
     console.error('downloadPptx error:', error)
     throw new Error(error instanceof Error ? error.message : 'The PPTX could not be generated.')

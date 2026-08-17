@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { isKnownContainer } from './skillCatalog'
+import { findEntry, isKnownEntry } from './skillCatalog'
 
 export const LANGUAGE_LEVELS = [
   'Native',
@@ -107,66 +107,102 @@ export const skillSchema = z.object({
 
 const isUrl = (value: string): boolean => z.url().safeParse(value).success
 
+/** One entry per selectable catalog node (see skillCatalog.ts). */
+export const expertiseGroupSchema = z.object({
+  key: z.string().refine(isKnownEntry, 'Unknown skill group'),
+  selected: z.boolean(),
+  skills: z.array(skillSchema),
+})
+
 /**
- * One entry per catalog container (see skillCatalog.ts). Membership is a checkbox,
- * so requirements apply only to checked containers and their checked skills:
- * unchecking leaves data intact for when it is checked again, without failing
- * validation in the meantime.
+ * Requirements live on the array rather than on each entry because they depend on
+ * neighbours: whether a group's children are checked, and whether an entry's parent
+ * is checked at all. Unchecking anything leaves its data intact for later without
+ * failing validation in the meantime, which a field-level `required` cannot express.
  */
-export const expertiseGroupSchema = z
-  .object({
-    key: z.string().refine(isKnownContainer, 'Unknown skill group'),
-    selected: z.boolean(),
-    skills: z.array(skillSchema),
-  })
-  .superRefine((group, ctx) => {
-    if (!group.selected) return
+export const expertiseSchema = z
+  .array(expertiseGroupSchema)
+  .superRefine((entries, ctx) => {
+    const selectedByKey = new Map(
+      entries.map((entry) => [entry.key, entry.selected]),
+    )
 
-    if (!group.skills.some((skill) => skill.selected)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Select or add at least one skill, or uncheck this group',
-        path: ['skills'],
-      })
-      return
-    }
+    entries.forEach((entry, index) => {
+      if (!entry.selected) return
 
-    group.skills.forEach((skill, index) => {
-      if (!skill.selected) return
+      const catalogEntry = findEntry(entry.key)
+      if (!catalogEntry) return
 
-      if (skill.name.trim() === '') {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'Skill name is required',
-          path: ['skills', index, 'name'],
-        })
+      // A hidden fieldset must not block the step, so an entry whose parent is
+      // unchecked is not validated.
+      if (
+        catalogEntry.parentKey !== null &&
+        selectedByKey.get(catalogEntry.parentKey) !== true
+      ) {
+        return
       }
 
-      if (skill.lastUsed === '') {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'Select when you last used this skill',
-          path: ['skills', index, 'lastUsed'],
-        })
+      if (catalogEntry.childKeys.length > 0) {
+        const hasCheckedChild = catalogEntry.childKeys.some(
+          (childKey) => selectedByKey.get(childKey) === true,
+        )
+
+        if (!hasCheckedChild) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'Select at least one item, or uncheck this group',
+            path: [index, 'selected'],
+          })
+        }
+        return
       }
 
-      skill.certificationLinks.forEach((link, linkIndex) => {
-        if (link.url.trim() === '') {
+      if (!entry.skills.some((skill) => skill.selected)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Select or add at least one skill, or uncheck this group',
+          path: [index, 'skills'],
+        })
+        return
+      }
+
+      entry.skills.forEach((skill, skillIndex) => {
+        if (!skill.selected) return
+
+        if (skill.name.trim() === '') {
           ctx.addIssue({
             code: 'custom',
-            message: 'Enter a URL or remove this row',
-            path: ['skills', index, 'certificationLinks', linkIndex, 'url'],
+            message: 'Skill name is required',
+            path: [index, 'skills', skillIndex, 'name'],
           })
-          return
         }
 
-        if (!isUrl(link.url.trim())) {
+        if (skill.lastUsed === '') {
           ctx.addIssue({
             code: 'custom',
-            message: 'Enter a valid URL',
-            path: ['skills', index, 'certificationLinks', linkIndex, 'url'],
+            message: 'Select when you last used this skill',
+            path: [index, 'skills', skillIndex, 'lastUsed'],
           })
         }
+
+        skill.certificationLinks.forEach((link, linkIndex) => {
+          if (link.url.trim() === '') {
+            ctx.addIssue({
+              code: 'custom',
+              message: 'Enter a URL or remove this row',
+              path: [index, 'skills', skillIndex, 'certificationLinks', linkIndex, 'url'],
+            })
+            return
+          }
+
+          if (!isUrl(link.url.trim())) {
+            ctx.addIssue({
+              code: 'custom',
+              message: 'Enter a valid URL',
+              path: [index, 'skills', skillIndex, 'certificationLinks', linkIndex, 'url'],
+            })
+          }
+        })
       })
     })
   })
@@ -230,7 +266,7 @@ export const cvSchema = z.object({
   personal: personalSchema,
   profile: profileSchema,
   qualifications: z.array(qualificationSchema),
-  expertise: z.array(expertiseGroupSchema),
+  expertise: expertiseSchema,
   experience: z.array(experienceSchema),
   certifications: z.array(certificationSchema),
   languages: z.array(languageSchema),

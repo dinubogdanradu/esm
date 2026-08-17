@@ -1,5 +1,5 @@
 import { defaultCv } from '@/schema/defaults'
-import { SKILL_CONTAINERS } from '@/schema/skillCatalog'
+import { EXPERTISE_ENTRIES } from '@/schema/skillCatalog'
 import { DRAFT_KEY, clearDraft, loadDraft, normalizeDraft, saveDraft } from './draft'
 
 // Seeded catalog options carry generated ids, so structural comparisons against a
@@ -85,7 +85,7 @@ describe('normalizeDraft', () => {
     })
 
     expect(result.expertise.map((group) => group.key)).toEqual(
-      SKILL_CONTAINERS.map((container) => container.key),
+      EXPERTISE_ENTRIES.map((entry) => entry.key),
     )
     expect(groupByKey(result, 'Programming > Python')).toMatchObject({
       selected: true,
@@ -102,12 +102,25 @@ describe('normalizeDraft', () => {
       expertise: [{ key: 'Cloud > AWS', selected: true, skills: [{ name: 'S3' }] }],
     })
 
-    expect(result.expertise).toHaveLength(SKILL_CONTAINERS.length)
+    expect(result.expertise).toHaveLength(EXPERTISE_ENTRIES.length)
     expect(
       result.expertise.every((group) =>
         group.skills.every((skill) => skill.name === '' || !skill.selected),
       ),
     ).toBe(true)
+  })
+
+  test('a level-1 group with sub-items exists but holds no skills', () => {
+    const result = normalizeDraft({
+      expertise: [
+        { key: 'Programming', selected: true, skills: [{ name: 'leaked' }] },
+      ],
+    })
+
+    expect(groupByKey(result, 'Programming')).toMatchObject({
+      selected: true,
+      skills: [],
+    })
   })
 
   test('seeds predefined containers from the catalog, unchecked', () => {

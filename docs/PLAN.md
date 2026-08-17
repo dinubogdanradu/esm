@@ -285,21 +285,35 @@ one reveals its fieldset.
 `?raw` import, so that file is the single source of truth and needs no codegen step.
 Level 1 is a group, level 2 a technology, level 3 a framework.
 
-A node with sub-items is a header, not a place skills attach. That leaves two kinds
-of **container**:
+**Levels 1 and 2 are both selectable,** so the form mirrors the file's shape rather
+than flattening it. The step renders one nested checkbox tree: level-1 headings are
+stacked one per line, and checking any node reveals its contents indented directly
+beneath it, so the form's shape matches skills.md at a glance. `EntryNode` is
+recursive, which is what keeps the nesting honest — the same component renders a
+group and a technology, and the depth comes from the catalog rather than from
+hand-written levels.
 
-- **Open** — a level-1 or level-2 leaf (`Infrastructure`, `Programming > Java`).
-  The user names each skill themselves in a repeatable list.
-- **Predefined** — a level-2 node whose children are frameworks
-  (`Programming > Node.js`). The frameworks are the skills, so they render as
-  checkboxes and checking one reveals its attributes. A level-1 node with level-2
-  children, such as `Programming`, is only a heading for the checkbox list.
+Each revealed section is a `div` with `role="group"` and an `aria-label`, not a
+`fieldset` with a `legend`: the checkbox already names that level, so a legend would
+repeat it. Tests rely on those accessible names to assert the nesting.
 
-The current file yields 15 containers. Editing it changes the form and stored drafts
-with no other code change; `normalizeDraft` rebuilds containers from the catalog,
-drops any it no longer lists, and matches predefined options by name.
+What a checked entry reveals depends on what sits under it in the file:
 
-The trade-off: container keys are `string` rather than a literal union, because
+- **A level-1 node with sub-items** (`Programming`) is a group: checking it reveals
+  checkboxes for its technologies, and it holds no skills of its own.
+- **A leaf at level 1 or 2** (`Infrastructure`, `Programming > Java`) holds skills
+  the user names themselves, in a repeatable list.
+- **A level-2 node whose children are frameworks** (`Programming > Node.js`) holds
+  those frameworks as its skills, so they render as checkboxes and checking one
+  reveals its attributes.
+
+The current file yields 16 entries — seven level-1 plus nine technologies.
+`expertise[i]` lines up with `EXPERTISE_ENTRIES[i]`, which is what `entryIndex`
+resolves for form paths. Editing skills.md changes the form and stored drafts with no
+other code change; `normalizeDraft` rebuilds entries from the catalog, drops any it
+no longer lists, and matches predefined options by name.
+
+The trade-off: entry keys are `string` rather than a literal union, because
 TypeScript cannot infer literals from a file parsed at runtime. Membership is
 enforced by a zod `refine` against the catalog instead of by the compiler.
 
@@ -308,10 +322,12 @@ Decisions in that change:
 - **Experience is a duration pair.** Years plus a remainder capped at 11 months, so
   "3 years 6 months" cannot also be entered as "3 years 18 months". If months was
   meant as an independent total instead, lift `SKILL_MAX_MONTHS`.
-- **Skill requirements apply only to checked groups and checked skills,** enforced in
-  a `superRefine` on the group rather than on the skill fields. Unchecking keeps the
-  data for later without failing validation in the meantime, which a field-level
-  `required` could not express.
+- **Expertise validation lives on the array, not on each entry.** `expertiseSchema`
+  is `z.array(expertiseGroupSchema).superRefine(...)`, because the rules depend on
+  neighbours: a group requires one checked child, and an entry whose parent is
+  unchecked must not be validated at all since its fieldset is hidden. A per-entry
+  refinement cannot see either. Requirements apply only to checked things, so
+  unchecking keeps data for later without failing validation in the meantime.
 - **`selected` on a skill unifies both container kinds.** Predefined containers are
   seeded with one entry per catalog option, off by default, so unchecking a framework
   keeps the years and links already typed for it. Skills the user adds by hand are
@@ -327,9 +343,41 @@ Decisions in that change:
   step.
 - **Named `certificationLinks`,** to keep it distinct from the CV-level
   Certifications & Trainings section.
-- **`DRAFT_KEY` is at v3.** v2 replaced free-text group names with a flat catalog;
-  v3 replaced that with the skills.md hierarchy, keying groups by container path.
-  Neither old shape maps onto the current one, so those drafts are discarded.
+- **`DRAFT_KEY` is at v4.** v2 replaced free-text group names with a flat catalog, v3
+  with the skills.md hierarchy keyed by path, and v4 made level-1 headings selectable
+  in their own right. No old shape maps onto the current one, so those drafts are
+  discarded.
+- **The PDF only emits skill-holding entries whose parent is also checked,** so an
+  unchecked `Programming` hides its technologies from the CV even if they are still
+  ticked underneath.
+
+## PPTX export
+
+`src/preview/downloadPptx.tsx` is a second exporter alongside the PDF: a
+pixel-matched recreation of the "short CV" PowerPoint deck at 10 x 6.25in (16:10),
+built with `pptxgenjs`. Master graphics are embedded as base64 data URLs so the
+export needs no template assets.
+
+It renders from the same `src/pdf/model.ts` view model as the PDF, which is what
+keeps the two exports consistent — the expertise reshape reached it for free, apart
+from the certification links it had not been rendering. Those now appear beneath each
+group as real hyperlinks, which PowerPoint supports and react-pdf does not.
+
+- **`buildPptx` is split from `downloadPptx`** so the deck can be assembled and
+  rendered under node in tests; `downloadPptx` only adds `writeFile`. Everything
+  except the profile photo works headless — that path needs `fetch`, `Image` and
+  canvas, so the fixtures leave `photo` empty.
+- **Tests assert the archive is a valid zip and count slide parts** from the entry
+  names rather than reading `pptx.slides`, which exists at runtime but is not in the
+  library's typings.
+- **`pptxgenjs` has no document language setting.** An earlier `pptx.lang` and
+  `theme.lang` did not typecheck: `PptxGenJS` has no such property and `ThemeProps`
+  carries only `headFontFace` and `bodyFontFace`. Both were removed.
+- Like the PDF, the tests prove it renders, not that it looks right.
+
+`src/preview/mmmdownloadPptx.tsx` is an earlier copy of this exporter that nothing
+imports. It still typechecks, so it is dead weight rather than a hazard, but it
+should be deleted.
 - **PDF rendering stays one line per group** — `Java: Spring (Expert, 5y 6m, Within
   last month); Maven (Proficient)` — to keep the change inside the existing styled
   block. Certification URLs render as indented lines beneath each group via the

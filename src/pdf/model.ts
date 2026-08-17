@@ -6,7 +6,7 @@ import {
   type Project,
   type Qualification,
 } from '@/schema/cv'
-import { findContainer } from '@/schema/skillCatalog'
+import { findEntry } from '@/schema/skillCatalog'
 
 const MONTHS = [
   'Jan',
@@ -80,9 +80,28 @@ export type ExpertiseLine = {
   links: string[]
 }
 
-export const expertiseLines = (cv: Cv): ExpertiseLine[] =>
-  cv.expertise
-    .filter((group) => group.selected)
+export const expertiseLines = (cv: Cv): ExpertiseLine[] => {
+  const selectedByKey = new Map(
+    cv.expertise.map((group) => [group.key, group.selected]),
+  )
+
+  return cv.expertise
+    .filter((group) => {
+      if (!group.selected) return false
+
+      const entry = findEntry(group.key)
+      // Level-1 groups with sub-items hold no skills of their own, and a checked
+      // entry under an unchecked parent is not on the CV.
+      if (!entry || !entry.holdsSkills) return false
+      if (
+        entry.parentKey !== null &&
+        selectedByKey.get(entry.parentKey) !== true
+      ) {
+        return false
+      }
+
+      return true
+    })
     .map((group) => {
       const skills = group.skills.filter(
         (skill) => skill.selected && isFilled(skill.name),
@@ -90,7 +109,7 @@ export const expertiseLines = (cv: Cv): ExpertiseLine[] =>
 
       return {
         key: group.key,
-        label: findContainer(group.key)?.name ?? group.key,
+        label: findEntry(group.key)?.name ?? group.key,
         value: skills
           .map((skill) => {
             const detail = join(
@@ -115,6 +134,7 @@ export const expertiseLines = (cv: Cv): ExpertiseLine[] =>
       }
     })
     .filter((line) => isFilled(line.value) || line.links.length > 0)
+}
 
 export type ExperienceEntry = {
   id: string
