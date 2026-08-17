@@ -20,7 +20,9 @@ export default function ReviewStep() {
   const [failure, setFailure] = useState<string | null>(null)
 
   const fullName = `${cv.personal.firstName} ${cv.personal.lastName}`.trim()
-  const skillTotal = cv.expertise.reduce(
+  // Every catalog group is always present in form state, so only checked ones count.
+  const selectedGroups = cv.expertise.filter((group) => group.selected)
+  const skillTotal = selectedGroups.reduce(
     (total, group) => total + group.skills.length,
     0,
   )
@@ -45,7 +47,7 @@ export default function ReviewStep() {
     },
     {
       label: 'Areas of expertise',
-      value: `${count(cv.expertise.length, 'group')}, ${count(skillTotal, 'skill')}`,
+      value: `${count(selectedGroups.length, 'group')}, ${count(skillTotal, 'skill')}`,
     },
     { label: 'Experience summary', value: count(cv.experience.length, 'role') },
     {

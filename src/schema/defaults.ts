@@ -1,6 +1,8 @@
+import { SKILL_CONTAINERS } from './skillCatalog'
 import type {
   Bullet,
   Certification,
+  CertificationLink,
   Cv,
   ExpertiseGroup,
   Experience,
@@ -28,18 +30,43 @@ export const blankQualification = (): Qualification => ({
   grade: '',
 })
 
+export const blankCertificationLink = (): CertificationLink => ({
+  id: newId(),
+  url: '',
+})
+
+/** A skill the user adds by hand, which is on the CV as soon as it exists. */
 export const blankSkill = (): Skill => ({
   id: newId(),
   name: '',
+  selected: true,
   level: DEFAULT_SKILL_LEVEL,
+  experienceYears: 0,
+  experienceMonths: 0,
+  // Left unset rather than defaulted: any default would assert something about the
+  // user's recency that may be false.
+  lastUsed: '',
+  certificationLinks: [],
 })
 
-export const blankExpertiseGroup = (): ExpertiseGroup => ({
-  id: newId(),
-  name: '',
-  showLevel: true,
-  skills: [blankSkill()],
+/** A catalog option, present in form state but off the CV until checked. */
+export const predefinedSkill = (name: string): Skill => ({
+  ...blankSkill(),
+  name,
+  selected: false,
 })
+
+/**
+ * Every container in the catalog always exists in form state; `selected` decides
+ * whether it appears on the CV. Containers with predefined options are seeded with
+ * one entry per option so that unchecking one keeps whatever was typed for it.
+ */
+export const defaultExpertiseGroups = (): ExpertiseGroup[] =>
+  SKILL_CONTAINERS.map((container) => ({
+    key: container.key,
+    selected: false,
+    skills: container.options.map(predefinedSkill),
+  }))
 
 export const blankBullet = (): Bullet => ({
   id: newId(),
@@ -107,7 +134,7 @@ export const defaultCv = (): Cv => ({
     summary: '',
   },
   qualifications: [],
-  expertise: [],
+  expertise: defaultExpertiseGroups(),
   experience: [],
   certifications: [],
   languages: [],

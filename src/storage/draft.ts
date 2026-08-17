@@ -1,10 +1,15 @@
 import {
   LANGUAGE_LEVELS,
+  LAST_USED_VALUES,
   SKILL_LEVEL_MAX,
   SKILL_LEVEL_MIN,
+  SKILL_MAX_MONTHS,
+  SKILL_MAX_YEARS,
   type Bullet,
   type Certification,
+  type CertificationLink,
   type Cv,
+  type LastUsed,
   type Experience,
   type ExpertiseGroup,
   type Language,
@@ -19,11 +24,14 @@ import {
   DEFAULT_SKILL_LEVEL,
   defaultCv,
   newId,
+  predefinedSkill,
 } from '@/schema/defaults'
+import { SKILL_CONTAINERS } from '@/schema/skillCatalog'
 
 // Bump when a shape change makes older drafts unreadable; stale keys are ignored
-// rather than migrated.
-export const DRAFT_KEY = 'cv-builder:draft:v1'
+// rather than migrated. v3 replaced the flat group catalog with the hierarchy read
+// from skills.md, keying groups by container path and adding per-skill selection.
+export const DRAFT_KEY = 'cv-builder:draft:v3'
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -34,7 +42,8 @@ const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : [
 
 const asText = (value: unknown): string => (typeof value === 'string' ? value : '')
 
-const asBool = (value: unknown): boolean => (typeof value === 'boolean' ? value : false)
+const asBool = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback
 
 const asId = (value: unknown): string =>
   typeof value === 'string' && value.length > 0 ? value : newId()
@@ -49,6 +58,14 @@ const asSkillLevel = (value: unknown): number =>
   value <= SKILL_LEVEL_MAX
     ? value
     : DEFAULT_SKILL_LEVEL
+
+const asCount = (value: unknown, max: number): number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
+    ? value
+    : 0
+
+const asLastUsed = (value: unknown): LastUsed | '' =>
+  LAST_USED_VALUES.includes(value as LastUsed) ? (value as LastUsed) : ''
 
 const asLanguageLevel = (value: unknown): LanguageLevel =>
   LANGUAGE_LEVELS.includes(value as LanguageLevel)
@@ -69,23 +86,57 @@ const toQualification = (raw: unknown): Qualification => {
   }
 }
 
-const toSkill = (raw: unknown): Skill => {
+const toCertificationLink = (raw: unknown): CertificationLink => {
   const item = asRecord(raw)
   return {
     id: asId(item.id),
-    name: asText(item.name),
-    level: asSkillLevel(item.level),
+    url: asText(item.url),
   }
 }
 
-const toExpertiseGroup = (raw: unknown): ExpertiseGroup => {
+const toSkill = (raw: unknown, defaultSelected: boolean): Skill => {
   const item = asRecord(raw)
   return {
     id: asId(item.id),
     name: asText(item.name),
-    showLevel: asBool(item.showLevel),
-    skills: asArray(item.skills).map(toSkill),
+    selected: asBool(item.selected, defaultSelected),
+    level: asSkillLevel(item.level),
+    experienceYears: asCount(item.experienceYears, SKILL_MAX_YEARS),
+    experienceMonths: asCount(item.experienceMonths, SKILL_MAX_MONTHS),
+    lastUsed: asLastUsed(item.lastUsed),
+    certificationLinks: asArray(item.certificationLinks).map(toCertificationLink),
   }
+}
+
+/**
+ * Rebuilds the catalog from skills.md rather than trusting stored keys, so editing
+ * that file resolves cleanly: containers it no longer lists are dropped and new ones
+ * appear empty. Predefined options are rebuilt from the catalog and matched to
+ * stored entries by name, so a renamed framework loses only its own attributes.
+ */
+const toExpertiseGroups = (raw: unknown): ExpertiseGroup[] => {
+  const stored = asArray(raw).map(asRecord)
+
+  return SKILL_CONTAINERS.map((container) => {
+    const match = stored.find((group) => group.key === container.key)
+    const storedSkills = asArray(match?.skills).map(asRecord)
+
+    const skills =
+      container.options.length > 0
+        ? container.options.map((option) => {
+            const found = storedSkills.find((skill) => skill.name === option)
+            return found
+              ? { ...toSkill(found, false), name: option }
+              : predefinedSkill(option)
+          })
+        : storedSkills.map((skill) => toSkill(skill, true))
+
+    return {
+      key: container.key,
+      selected: asBool(match?.selected, false),
+      skills,
+    }
+  })
 }
 
 const toBullet = (raw: unknown): Bullet => {
@@ -183,9 +234,7 @@ export const normalizeDraft = (raw: unknown): Cv => {
     qualifications: 'qualifications' in stored
       ? asArray(stored.qualifications).map(toQualification)
       : base.qualifications,
-    expertise: 'expertise' in stored
-      ? asArray(stored.expertise).map(toExpertiseGroup)
-      : base.expertise,
+    expertise: toExpertiseGroups(stored.expertise),
     experience: 'experience' in stored
       ? asArray(stored.experience).map(toExperience)
       : base.experience,

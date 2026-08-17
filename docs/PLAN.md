@@ -198,12 +198,24 @@ type Cv = {
     grade?: string
   }>
 
-  // Areas of expertise: the grouped skill model
+  // Areas of expertise: one entry per container in the catalog read from
+  // src/schema/skills.md. Every container is always present in form state;
+  // `selected` decides whether it reaches the CV, and checking one reveals its
+  // fieldset.
   expertise: Array<{
-    id: string
-    name: string               // required, e.g. "Cloud & Infrastructure"
-    showLevel: boolean
-    skills: Array<{ id: string, name: string, level?: 1 | 2 | 3 | 4 | 5 }>
+    key: string                    // container path, e.g. "Programming > Node.js"
+    selected: boolean
+    skills: Array<{
+      id: string
+      name: string                 // typed in an open container, fixed otherwise
+      selected: boolean            // whether this skill reaches the CV
+      level: 1 | 2 | 3 | 4 | 5     // always asked
+      experienceYears: number      // 0-60
+      experienceMonths: number     // 0-11, remainder beyond whole years
+      lastUsed: '' | 'Within last month' | 'Within last year'
+              | 'More than a year ago'   // required when checked
+      certificationLinks: Array<{ id: string, url: string }>
+    }>
   }>
 
   // Experience summary: full entries with achievement bullets
@@ -259,14 +271,78 @@ Assumptions worth overriding if wrong:
 - Proficiency levels on expertise skills are numeric in the model; how they render
   (dots, a text label, or not at all) is a template decision in Phase 4.
 
+## Expertise revision
+
+The expertise section was reshaped after Phase 4 landed. Each skill carries
+proficiency (always asked, `showLevel` is gone), experience as years plus a month
+remainder, a last-used dropdown, and any number of certification links. Groups are
+no longer free text; they come from a catalog rendered as checkboxes, and checking
+one reveals its fieldset.
+
+### The catalog comes from skills.md
+
+`src/schema/skillCatalog.ts` parses `src/schema/skills.md` at module load, via a
+`?raw` import, so that file is the single source of truth and needs no codegen step.
+Level 1 is a group, level 2 a technology, level 3 a framework.
+
+A node with sub-items is a header, not a place skills attach. That leaves two kinds
+of **container**:
+
+- **Open** — a level-1 or level-2 leaf (`Infrastructure`, `Programming > Java`).
+  The user names each skill themselves in a repeatable list.
+- **Predefined** — a level-2 node whose children are frameworks
+  (`Programming > Node.js`). The frameworks are the skills, so they render as
+  checkboxes and checking one reveals its attributes. A level-1 node with level-2
+  children, such as `Programming`, is only a heading for the checkbox list.
+
+The current file yields 15 containers. Editing it changes the form and stored drafts
+with no other code change; `normalizeDraft` rebuilds containers from the catalog,
+drops any it no longer lists, and matches predefined options by name.
+
+The trade-off: container keys are `string` rather than a literal union, because
+TypeScript cannot infer literals from a file parsed at runtime. Membership is
+enforced by a zod `refine` against the catalog instead of by the compiler.
+
+Decisions in that change:
+
+- **Experience is a duration pair.** Years plus a remainder capped at 11 months, so
+  "3 years 6 months" cannot also be entered as "3 years 18 months". If months was
+  meant as an independent total instead, lift `SKILL_MAX_MONTHS`.
+- **Skill requirements apply only to checked groups and checked skills,** enforced in
+  a `superRefine` on the group rather than on the skill fields. Unchecking keeps the
+  data for later without failing validation in the meantime, which a field-level
+  `required` could not express.
+- **`selected` on a skill unifies both container kinds.** Predefined containers are
+  seeded with one entry per catalog option, off by default, so unchecking a framework
+  keeps the years and links already typed for it. Skills the user adds by hand are
+  created already selected. Anything counting skills must filter on it.
+- **A container-level error needs its own display in the predefined branch,** which
+  has no `RepeatableSection` to surface it. `messageAtPath` moved to
+  `src/components/fieldErrors.ts` and is shared by both.
+- **`lastUsed` starts empty and is required once checked.** Defaulting it to any of
+  the three options would assert something about the user's recency that may be
+  false, so the select opens on "Select…".
+- **Certification URL format is checked in the same refinement,** not on the field,
+  for the same reason — a malformed URL in an unchecked group must not block the
+  step.
+- **Named `certificationLinks`,** to keep it distinct from the CV-level
+  Certifications & Trainings section.
+- **`DRAFT_KEY` is at v3.** v2 replaced free-text group names with a flat catalog;
+  v3 replaced that with the skills.md hierarchy, keying groups by container path.
+  Neither old shape maps onto the current one, so those drafts are discarded.
+- **PDF rendering stays one line per group** — `Java: Spring (Expert, 5y 6m, Within
+  last month); Maven (Proficient)` — to keep the change inside the existing styled
+  block. Certification URLs render as indented lines beneath each group via the
+  `expertiseLink` style. In a narrow 8pt column long URLs will wrap; that style is
+  the place to change it.
+
 ## Phase 3: skills manager
 
-Phase 2 already made the `expertise` array fully editable: groups with a name and a
-`showLevel` toggle, nested reorderable skills, and a proficiency select that appears
-only for rated groups. What remains for this phase is the polish:
+The expertise editor is built (see the revision above). What remains for this phase
+is the polish:
 
-- Autocomplete backed by the `exampleSkills` util from `legacy/utils/`, grown into a
-  typed per-category catalog.
+- Autocomplete for skill names, backed by the `exampleSkills` util from
+  `legacy/utils/` grown into a typed per-group catalog.
 - Moving a skill between groups, which the current up/down controls cannot do.
 - Optional: drag reordering via dnd-kit, replacing the buttons.
 
