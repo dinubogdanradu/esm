@@ -1,6 +1,6 @@
 import RepeatableSection from '@/components/RepeatableSection'
 import TagsField from '@/components/fields/TagsField'
-import TextAreaField from '@/components/fields/TextAreaField'
+import RichTextField from '@/components/fields/RichTextField'
 import TextField from '@/components/fields/TextField'
 import { blankProject } from '@/schema/defaults'
 import styles from './steps.module.css'
@@ -20,10 +20,9 @@ export default function ProjectsStep() {
             <TextField name={`projects.${index}.role`} label="Your role" />
           </div>
 
-          <TextAreaField
+          <RichTextField
             name={`projects.${index}.description`}
             label="Description"
-            rows={4}
           />
 
           <TagsField

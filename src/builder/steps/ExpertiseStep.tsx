@@ -11,14 +11,13 @@ import {
   SKILL_LEVEL_MAX,
   SKILL_LEVEL_MIN,
   SKILL_MAX_MONTHS,
-  SKILL_MAX_YEARS,
   type Cv,
 } from '@/schema/cv'
 import { blankCertificationLink, blankSkill } from '@/schema/defaults'
 import {
   TOP_LEVEL_ENTRIES,
-  childEntries,
   entryIndex,
+  findEntry,
   type CatalogEntry,
 } from '@/schema/skillCatalog'
 import styles from './steps.module.css'
@@ -65,19 +64,11 @@ function SkillAttributes({ path }: { path: SkillPath }) {
         />
       </div>
 
-      <div className={styles.grid}>
-        <NumberField
-          name={`${path}.experienceYears`}
-          label="Experience (years)"
-          max={SKILL_MAX_YEARS}
-        />
-        <NumberField
-          name={`${path}.experienceMonths`}
-          label="Experience (months)"
-          max={SKILL_MAX_MONTHS}
-          hint={`Remainder beyond whole years, 0-${SKILL_MAX_MONTHS}`}
-        />
-      </div>
+      <NumberField
+        name={`${path}.experienceMonths`}
+        label="Experience (in months)"
+        max={SKILL_MAX_MONTHS}
+      />
 
       <RepeatableSection
         name={`${path}.certificationLinks`}
@@ -150,63 +141,10 @@ function PredefinedSkill({
 }
 
 /**
- * A node whose sub-items are frameworks: those are the skills, so they are
- * checkboxes rather than free text.
- */
-function PredefinedSkills({
-  groupIndex,
-  options,
-  skills,
-}: {
-  groupIndex: number
-  options: string[]
-  skills: Cv['expertise'][number]['skills']
-}) {
-  // No RepeatableSection here to surface an error sitting on the skills array
-  // itself, such as "select at least one".
-  const { errors } = useFormState<Cv>({ name: `expertise.${groupIndex}.skills` })
-  const message = messageAtPath(errors, `expertise.${groupIndex}.skills`)
-
-  return (
-    <>
-      {options.map((option, skillIndex) => (
-        <PredefinedSkill
-          key={option}
-          groupIndex={groupIndex}
-          skillIndex={skillIndex}
-          name={option}
-          checked={skills[skillIndex]?.selected === true}
-        />
-      ))}
-      {message && <p className={styles.error}>{message}</p>}
-    </>
-  )
-}
-
-function SkillsFor({
-  entry,
-  groups,
-}: {
-  entry: CatalogEntry
-  groups: Cv['expertise']
-}) {
-  const index = entryIndex(entry.key)
-
-  return entry.options.length > 0 ? (
-    <PredefinedSkills
-      groupIndex={index}
-      options={entry.options}
-      skills={groups[index]?.skills ?? []}
-    />
-  ) : (
-    <OpenSkills groupIndex={index} />
-  )
-}
-
-/**
- * One line of the tree: a checkbox, and when it is checked, its contents indented
- * directly beneath it. A node with sub-items lists those as further checkboxes; a
- * node without holds skills.
+ * One line of the tree: a checkbox, and when checked, its contents indented directly
+ * beneath it. A category renders its children in file order, so leaf skills and
+ * nested categories interleave exactly as skills.md lists them. A category with no
+ * children at all lets the user name its own skills.
  */
 function EntryNode({
   entry,
@@ -218,34 +156,60 @@ function EntryNode({
   const index = entryIndex(entry.key)
   const { errors } = useFormState<Cv>({ name: `expertise.${index}` })
   const selected = groups[index]?.selected === true
-  const children = childEntries(entry)
-  const message = messageAtPath(errors, `expertise.${index}.selected`)
+  const skills = groups[index]?.skills ?? []
+
+  // The "select at least one" error lands on `selected` when the category has
+  // sub-categories and on `skills` otherwise. An open category already shows the
+  // latter through its RepeatableSection, so claiming it here would duplicate it.
+  const message =
+    messageAtPath(errors, `expertise.${index}.selected`) ??
+    (entry.open ? undefined : messageAtPath(errors, `expertise.${index}.skills`))
 
   return (
     <div className={styles.node}>
-      <CheckboxField
-        name={`expertise.${index}.selected`}
-        label={entry.name}
-      />
+      <CheckboxField name={`expertise.${index}.selected`} label={entry.name} />
 
       {selected && (
         // aria-label rather than a fieldset legend: the checkbox already names this
         // level, so a legend would repeat it.
         <div className={styles.nodeBody} role="group" aria-label={entry.name}>
-          {children.length > 0 ? (
-            <>
-              {children.map((child) => (
-                <EntryNode key={child.key} entry={child} groups={groups} />
-              ))}
-              {message && <p className={styles.error}>{message}</p>}
-            </>
-          ) : (
-            <SkillsFor entry={entry} groups={groups} />
+          {entry.items.map((item) =>
+            item.kind === 'skill' ? (
+              <PredefinedSkill
+                key={`skill:${item.name}`}
+                groupIndex={index}
+                skillIndex={entry.options.indexOf(item.name)}
+                name={item.name}
+                checked={
+                  skills[entry.options.indexOf(item.name)]?.selected === true
+                }
+              />
+            ) : (
+              <ChildNode key={item.key} childKey={item.key} groups={groups} />
+            ),
           )}
+
+          {entry.open && <OpenSkills groupIndex={index} />}
+
+          {message && <p className={styles.error}>{message}</p>}
         </div>
       )}
     </div>
   )
+}
+
+/** Resolves a child key to its catalog entry, keeping EntryNode's recursion simple. */
+function ChildNode({
+  childKey,
+  groups,
+}: {
+  childKey: string
+  groups: Cv['expertise']
+}) {
+  const entry = findEntry(childKey)
+  if (!entry) return null
+
+  return <EntryNode entry={entry} groups={groups} />
 }
 
 export default function ExpertiseStep() {

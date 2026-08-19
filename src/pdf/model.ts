@@ -6,7 +6,12 @@ import {
   type Project,
   type Qualification,
 } from '@/schema/cv'
-import { findEntry } from '@/schema/skillCatalog'
+import { ancestorKeys, findEntry } from '@/schema/skillCatalog'
+import {
+  compactRichText,
+  richTextIsEmpty,
+  type RichText,
+} from '@/schema/richText'
 
 const MONTHS = [
   'Jan',
@@ -50,15 +55,11 @@ export const formatDateRange = (
 }
 
 /**
- * The form collects the summary as free text but the template renders bullets, so
- * each non-empty line becomes one bullet. A single-line summary yields one bullet,
- * which reads as a paragraph.
+ * Rich text ready to render: blank runs and blocks removed, so a trailing empty
+ * paragraph left by the editor never reaches the CV.
  */
-export const profileBullets = (summary: string): string[] =>
-  summary
-    .split(/\r?\n+/)
-    .map((line) => line.replace(/^[-*•]\s*/, '').trim())
-    .filter(isFilled)
+export const renderableRichText = (value: RichText): RichText =>
+  compactRichText(value)
 
 export const qualificationLine = (entry: Qualification): string => {
   const degree = join([entry.degree, entry.field && `(${entry.field})`], ' ')
@@ -68,9 +69,16 @@ export const qualificationLine = (entry: Qualification): string => {
   return join([degree, place, dates, entry.grade], ', ')
 }
 
-/** "5y 6m", "5y", "6m", or empty when no experience was entered. */
-export const formatExperience = (years: number, months: number): string =>
-  join([years > 0 ? `${years}y` : '', months > 0 ? `${months}m` : ''], ' ')
+/**
+ * Renders a total in months as "5y 6m", "5y" or "6m" — the input is one number, but
+ * whole years read better than a raw month count on the CV.
+ */
+export const formatExperience = (totalMonths: number): string => {
+  const years = Math.floor(totalMonths / 12)
+  const months = totalMonths % 12
+
+  return join([years > 0 ? `${years}y` : '', months > 0 ? `${months}m` : ''], ' ')
+}
 
 export type ExpertiseLine = {
   key: string
@@ -80,28 +88,25 @@ export type ExpertiseLine = {
   links: string[]
 }
 
-export const expertiseLines = (cv: Cv): ExpertiseLine[] => {
+/**
+ * Categories that reach the CV: checked, with every ancestor checked too, so
+ * unchecking a parent hides its whole subtree without disturbing what is under it.
+ */
+export const activeExpertise = (cv: Cv): Cv['expertise'] => {
   const selectedByKey = new Map(
     cv.expertise.map((group) => [group.key, group.selected]),
   )
 
-  return cv.expertise
-    .filter((group) => {
-      if (!group.selected) return false
+  return cv.expertise.filter(
+    (group) =>
+      group.selected &&
+      findEntry(group.key) !== undefined &&
+      ancestorKeys(group.key).every((key) => selectedByKey.get(key) === true),
+  )
+}
 
-      const entry = findEntry(group.key)
-      // Level-1 groups with sub-items hold no skills of their own, and a checked
-      // entry under an unchecked parent is not on the CV.
-      if (!entry || !entry.holdsSkills) return false
-      if (
-        entry.parentKey !== null &&
-        selectedByKey.get(entry.parentKey) !== true
-      ) {
-        return false
-      }
-
-      return true
-    })
+export const expertiseLines = (cv: Cv): ExpertiseLine[] =>
+  activeExpertise(cv)
     .map((group) => {
       const skills = group.skills.filter(
         (skill) => skill.selected && isFilled(skill.name),
@@ -115,7 +120,7 @@ export const expertiseLines = (cv: Cv): ExpertiseLine[] => {
             const detail = join(
               [
                 SKILL_LEVEL_LABELS[skill.level - 1],
-                formatExperience(skill.experienceYears, skill.experienceMonths),
+                formatExperience(skill.experienceMonths),
                 skill.lastUsed,
               ],
               ', ',
@@ -134,13 +139,12 @@ export const expertiseLines = (cv: Cv): ExpertiseLine[] => {
       }
     })
     .filter((line) => isFilled(line.value) || line.links.length > 0)
-}
 
 export type ExperienceEntry = {
   id: string
   title: string
   meta: string
-  bullets: string[]
+  achievements: RichText
   tech: string
 }
 
@@ -152,7 +156,7 @@ export const experienceEntries = (entries: Experience[]): ExperienceEntry[] =>
       [entry.location, formatDateRange(entry.startDate, entry.endDate, entry.current)],
       ' | ',
     ),
-    bullets: entry.bullets.map((bullet) => bullet.text.trim()).filter(isFilled),
+    achievements: renderableRichText(entry.achievements),
     tech: entry.tech.filter(isFilled).join(', '),
   }))
 
@@ -171,7 +175,7 @@ export type ProjectEntry = {
   id: string
   title: string
   meta: string
-  description: string
+  description: RichText
   tech: string
 }
 
@@ -183,7 +187,7 @@ export const projectEntries = (projects: Project[]): ProjectEntry[] =>
       [project.role, formatDateRange(project.startDate, project.endDate), project.url],
       ' | ',
     ),
-    description: project.description.trim(),
+    description: renderableRichText(project.description),
     tech: project.tech.filter(isFilled).join(', '),
   }))
 
@@ -212,7 +216,7 @@ export const presentSections = (cv: Cv) => {
   const languages = cv.languages.filter((language) => isFilled(language.name))
 
   return {
-    profile: profileBullets(cv.profile.summary).length > 0,
+    profile: !richTextIsEmpty(cv.profile.summary),
     qualifications: cv.qualifications.some((entry) =>
       isFilled(qualificationLine(entry)),
     ),

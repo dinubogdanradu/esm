@@ -1,6 +1,6 @@
 import { EXPERTISE_ENTRIES } from './skillCatalog'
+import { emptyRichText } from './richText'
 import type {
-  Bullet,
   Certification,
   CertificationLink,
   Cv,
@@ -41,7 +41,6 @@ export const blankSkill = (): Skill => ({
   name: '',
   selected: true,
   level: DEFAULT_SKILL_LEVEL,
-  experienceYears: 0,
   experienceMonths: 0,
   // Left unset rather than defaulted: any default would assert something about the
   // user's recency that may be false.
@@ -66,13 +65,10 @@ export const defaultExpertiseGroups = (): ExpertiseGroup[] =>
   EXPERTISE_ENTRIES.map((entry) => ({
     key: entry.key,
     selected: false,
+    // A category with leaf children is seeded with one skill per leaf; an open one
+    // starts empty and is filled by the user.
     skills: entry.options.map(predefinedSkill),
   }))
-
-export const blankBullet = (): Bullet => ({
-  id: newId(),
-  text: '',
-})
 
 export const blankExperience = (): Experience => ({
   id: newId(),
@@ -82,7 +78,7 @@ export const blankExperience = (): Experience => ({
   startDate: '',
   endDate: '',
   current: false,
-  bullets: [blankBullet()],
+  achievements: emptyRichText(),
   tech: [],
 })
 
@@ -110,7 +106,7 @@ export const blankProject = (): Project => ({
   id: newId(),
   name: '',
   role: '',
-  description: '',
+  description: emptyRichText(),
   tech: [],
   url: '',
   startDate: '',
@@ -132,7 +128,7 @@ export const defaultCv = (): Cv => ({
     photo: '',
   },
   profile: {
-    summary: '',
+    summary: emptyRichText(),
   },
   qualifications: [],
   expertise: defaultExpertiseGroups(),

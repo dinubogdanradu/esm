@@ -47,7 +47,17 @@ npm run typecheck  # tsc -b, no emit
 npm run build      # typecheck then production build to dist/
 ```
 
-Deploying to a GitHub Pages project page needs the repo path as the base:
+## Deployment
+
+Pushing to `main` builds and publishes to GitHub Pages via
+[.github/workflows/deploy.yml](.github/workflows/deploy.yml). Pull requests run the
+same typecheck, tests and build but do not publish, since Pages hosts a single live
+site.
+
+The workflow needs **Settings → Pages → Source: GitHub Actions** enabled once on the
+repository.
+
+To deploy by hand instead, the base path must match the repo:
 
 ```bash
 VITE_BASE=/<repo>/ npm run build && npm run deploy

@@ -2,9 +2,10 @@ import { useFormContext, useWatch } from 'react-hook-form'
 import RepeatableSection from '@/components/RepeatableSection'
 import CheckboxField from '@/components/fields/CheckboxField'
 import TagsField from '@/components/fields/TagsField'
+import RichTextField from '@/components/fields/RichTextField'
 import TextField from '@/components/fields/TextField'
 import type { Cv } from '@/schema/cv'
-import { blankBullet, blankExperience } from '@/schema/defaults'
+import { blankExperience } from '@/schema/defaults'
 import styles from './steps.module.css'
 
 /**
@@ -56,23 +57,12 @@ function ExperienceEntry({ index }: { index: number }) {
         }}
       />
 
-      <div className={styles.nested}>
-        <RepeatableSection
-          name={`experience.${index}.bullets`}
-          itemNoun="Bullet"
-          emptyMessage="Add at least one achievement bullet."
-          makeItem={blankBullet}
-        >
-          {(bulletIndex) => (
-            <TextField
-              name={`experience.${index}.bullets.${bulletIndex}.text`}
-              label="Achievement"
-              required
-              hint="What changed because you were there, ideally with a number."
-            />
-          )}
-        </RepeatableSection>
-      </div>
+      <RichTextField
+        name={`experience.${index}.achievements`}
+        label="Achievements"
+        required
+        hint="What changed because you were there, ideally with a number."
+      />
 
       <TagsField
         name={`experience.${index}.tech`}
