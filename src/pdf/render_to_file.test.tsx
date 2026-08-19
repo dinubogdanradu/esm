@@ -4,8 +4,9 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { vi } from 'vitest'
-import { blankSkill, defaultCv } from '@/schema/defaults'
-import { selectEntry } from '@/test/expertise'
+import { richTextFromPlain } from '@/schema/richText'
+import { defaultCv } from '@/schema/defaults'
+import { ratedEntry, selectSkill } from '@/test/expertise'
 
 const fontPath = (file: string) => ({ default: resolve('src/pdf/fonts', file) })
 
@@ -20,6 +21,15 @@ vi.mock('./assets/infosys-logo.png', () => ({
 
 const { default: CvDocument } = await import('./CvDocument')
 
+
+// Catalog-derived, so these fixtures survive edits to skills.md.
+const rated = ratedEntry()
+const ratedSkill = (index: number): string => {
+  const name = rated.options[index % rated.options.length]
+  if (!name) throw new Error('rated category has no options')
+  return name
+}
+
 const populated = () => {
     const cv = defaultCv()
     cv.personal = {
@@ -33,7 +43,7 @@ const populated = () => {
         linkedin: '',
         photo: '',
     }
-    cv.profile.summary = 'Over 18 years of experience.\nGood infrastructure knowledge.'
+    cv.profile.summary = richTextFromPlain('Over 18 years of experience.\nGood infrastructure knowledge.')
     cv.qualifications = [
         {
             id: 'q1',
@@ -46,29 +56,22 @@ const populated = () => {
             grade: '',
         },
     ]
-    // Expertise mirrors the skills.md catalog: check the group, then the technology
-    // under it, then fill in that technology's skills.
-    selectEntry(cv, 'Programming')
-    selectEntry(cv, 'Programming > PHP', [
-        {
-            ...blankSkill(),
-            id: 's1',
-            name: 'Drupal',
-            level: 5,
-            experienceYears: 12,
-            experienceMonths: 3,
-            lastUsed: 'Within last month',
-            certificationLinks: [{ id: 'l1', url: 'https://example.com/drupal-cert' }],
-        },
-        {
-            ...blankSkill(),
-            id: 's2',
-            name: 'Laravel',
-            level: 4,
-            experienceYears: 4,
-            lastUsed: 'Within last year',
-        },
-    ])
+    // Programming holds the languages as leaf skills; Node.js nests under it.
+    selectSkill(cv, rated.key, ratedSkill(0), {
+      level: 5,
+      experienceMonths: 147,
+      lastUsed: 'Within last month',
+      certificationLinks: [{ id: 'l1', url: 'https://example.com/drupal-cert' }],
+    })
+    selectSkill(cv, rated.key, ratedSkill(0), {
+      level: 4,
+      experienceMonths: 48,
+      lastUsed: 'Within last year',
+    })
+    selectSkill(cv, rated.key, ratedSkill(1), {
+      level: 4,
+      lastUsed: 'Within last month',
+    })
     cv.experience = [
         {
             id: 'e1',
@@ -78,10 +81,7 @@ const populated = () => {
             startDate: '2019-04',
             endDate: '',
             current: true,
-            bullets: [
-                { id: 'b1', text: 'Website maintenance and development' },
-                { id: 'b2', text: 'Design system implementation' },
-            ],
+            achievements: richTextFromPlain('Website maintenance and development\nDesign system implementation'),
             tech: ['Drupal', 'PHP'],
         },
     ]

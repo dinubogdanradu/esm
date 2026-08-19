@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useWatch } from 'react-hook-form'
 import type { Cv } from '@/schema/cv'
+import { activeExpertise } from '@/pdf/model'
+import { richTextToPlain } from '@/schema/richText'
 import { downloadPdf } from '@/preview/downloadPdf'
 import { downloadPptx } from '@/preview/downloadPptx'
 import styles from './steps.module.css'
@@ -20,10 +22,17 @@ export default function ReviewStep() {
   const [failure, setFailure] = useState<string | null>(null)
 
   const fullName = `${cv.personal.firstName} ${cv.personal.lastName}`.trim()
-  // Every catalog group is always present in form state, so only checked ones count.
-  const selectedGroups = cv.expertise.filter((group) => group.selected)
+  // Word count comes from the rich text flattened to plain lines.
+  const summaryText = richTextToPlain(cv.profile.summary).trim()
+  const summaryWords = summaryText === '' ? 0 : summaryText.split(/\s+/).length
+  // Every catalog category is always present in form state, so count only the ones
+  // that actually reach the CV, along with their checked skills.
+  const selectedGroups = activeExpertise(cv).filter((group) =>
+    group.skills.some((skill) => skill.selected),
+  )
   const skillTotal = selectedGroups.reduce(
-    (total, group) => total + group.skills.length,
+    (total, group) =>
+      total + group.skills.filter((skill) => skill.selected).length,
     0,
   )
 
@@ -35,11 +44,8 @@ export default function ReviewStep() {
     },
     {
       label: 'Profile summary',
-      value:
-        cv.profile.summary.trim() === ''
-          ? 'Not written yet'
-          : count(cv.profile.summary.trim().split(/\s+/).length, 'word'),
-      incomplete: cv.profile.summary.trim() === '',
+      value: summaryText === '' ? 'Not written yet' : count(summaryWords, 'word'),
+      incomplete: summaryText === '',
     },
     {
       label: 'Qualifications',

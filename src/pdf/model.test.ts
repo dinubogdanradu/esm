@@ -1,5 +1,8 @@
 import { blankSkill, defaultCv } from '@/schema/defaults'
 import type { Cv, Skill } from '@/schema/cv'
+import { blockText, plainRun, richTextFromPlain } from '@/schema/richText'
+import { EXPERTISE_ENTRIES, ancestorKeys } from '@/schema/skillCatalog'
+import { ratedEntry } from '@/test/expertise'
 import {
   certificationLine,
   contactLines,
@@ -11,7 +14,7 @@ import {
   formatMonthYear,
   hasSecondPageContent,
   presentSections,
-  profileBullets,
+  renderableRichText,
   projectEntries,
   qualificationLine,
 } from './model'
@@ -45,28 +48,27 @@ describe('formatDateRange', () => {
   })
 })
 
-describe('profileBullets', () => {
-  test('splits lines into bullets', () => {
-    expect(profileBullets('First line\nSecond line')).toEqual([
-      'First line',
-      'Second line',
-    ])
+describe('renderableRichText', () => {
+  test('drops blank runs and blocks the editor leaves behind', () => {
+    const value = renderableRichText({
+      blocks: [
+        { type: 'bullet', runs: [plainRun('Shipped'), plainRun('')] },
+        { type: 'paragraph', runs: [plainRun('   ')] },
+        { type: 'bullet', runs: [] },
+      ],
+    })
+
+    expect(value.blocks).toHaveLength(1)
+    expect(value.blocks[0]?.runs.map((run) => run.text)).toEqual(['Shipped'])
   })
 
-  test('keeps a single paragraph as one bullet', () => {
-    expect(profileBullets('Just one sentence.')).toEqual(['Just one sentence.'])
-  })
+  test('keeps the marks on surviving runs', () => {
+    const bold = { ...plainRun('Led'), bold: true }
+    const value = renderableRichText({
+      blocks: [{ type: 'paragraph', runs: [bold, plainRun(' the migration')] }],
+    })
 
-  test('strips leading bullet characters the user typed', () => {
-    expect(profileBullets('- dashed\n* starred\n• dotted')).toEqual([
-      'dashed',
-      'starred',
-      'dotted',
-    ])
-  })
-
-  test('ignores blank lines and whitespace', () => {
-    expect(profileBullets('  \n\nOne\n\n   \nTwo\n')).toEqual(['One', 'Two'])
+    expect(value.blocks[0]?.runs[0]).toMatchObject({ text: 'Led', bold: true })
   })
 })
 
@@ -105,90 +107,94 @@ describe('qualificationLine', () => {
 })
 
 describe('formatExperience', () => {
-  test('renders whichever parts are non-zero', () => {
-    expect(formatExperience(5, 6)).toBe('5y 6m')
-    expect(formatExperience(5, 0)).toBe('5y')
-    expect(formatExperience(0, 6)).toBe('6m')
-    expect(formatExperience(0, 0)).toBe('')
+  test('splits a total in months into years and months', () => {
+    expect(formatExperience(66)).toBe('5y 6m')
+    expect(formatExperience(60)).toBe('5y')
+    expect(formatExperience(6)).toBe('6m')
+    expect(formatExperience(0)).toBe('')
+    expect(formatExperience(12)).toBe('1y')
+    expect(formatExperience(13)).toBe('1y 1m')
   })
 })
 
 describe('expertiseLines', () => {
-  const skill = (overrides: Partial<Skill>): Skill => ({
+  const skill = (overrides: Partial<Skill> = {}): Skill => ({
     ...blankSkill(),
     ...overrides,
   })
 
-  // The parent group has to be checked too, since an entry under an unchecked
-  // parent is not on the CV.
-  const withJava = (skills: Skill[], selected = true, parentSelected = true): Cv => {
+  // Catalog-derived: only the key matters here, since the skills are set directly.
+  const rated = ratedEntry()
+  const nested = EXPERTISE_ENTRIES.find((entry) => entry.depth > 1)
+  if (!nested) throw new Error('skills.md has no nested category')
+
+  const withProgramming = (skills: Skill[], selected = true): Cv => {
     const cv = defaultCv()
-    const programming = cv.expertise.find((entry) => entry.key === 'Programming')
-    const group = cv.expertise.find((entry) => entry.key === 'Programming > Java')
-    if (!programming || !group) throw new Error('catalog entries missing')
-    programming.selected = parentSelected
+    const group = cv.expertise.find((entry) => entry.key === rated.key)
+    if (!group) throw new Error('rated category missing from the catalog')
+    // Ancestors too, or the category never reaches the CV.
+    for (const key of ancestorKeys(rated.key)) {
+      const ancestor = cv.expertise.find((entry) => entry.key === key)
+      if (ancestor) ancestor.selected = selected
+    }
     group.selected = selected
     group.skills = skills
     return cv
   }
 
   test('includes proficiency, experience and recency for each skill', () => {
-    const cv = withJava([
+    const cv = withProgramming([
       skill({
-        name: 'Spring',
+        name: 'Java',
         level: 5,
-        experienceYears: 5,
-        experienceMonths: 6,
+        experienceMonths: 66,
         lastUsed: 'Within last month',
       }),
     ])
 
     expect(expertiseLines(cv)[0]).toMatchObject({
-      key: 'Programming > Java',
-      // Labelled by the container, not its full catalog path.
-      label: 'Java',
-      value: 'Spring (Expert, 5y 6m, Within last month)',
+      key: rated.key,
+      label: rated.name,
+      value: 'Java (Expert, 5y 6m, Within last month)',
     })
   })
 
   test('excludes skills that are present but unchecked', () => {
-    const cv = withJava([
-      skill({ name: 'Spring', level: 5 }),
-      skill({ name: 'Struts', level: 2, selected: false }),
+    const cv = withProgramming([
+      skill({ name: 'Java', level: 5 }),
+      skill({ name: 'Rust', level: 2, selected: false }),
     ])
 
-    expect(expertiseLines(cv)[0]?.value).toBe('Spring (Expert)')
+    expect(expertiseLines(cv)[0]?.value).toBe('Java (Expert)')
   })
 
   test('omits detail parts that were not filled in', () => {
-    const cv = withJava([skill({ name: 'Hibernate', level: 4 })])
+    const cv = withProgramming([skill({ name: 'Go', level: 4 })])
 
-    expect(expertiseLines(cv)[0]?.value).toBe('Hibernate (Advanced)')
+    expect(expertiseLines(cv)[0]?.value).toBe('Go (Advanced)')
   })
 
   test('separates multiple skills and skips unnamed ones', () => {
-    const cv = withJava([
-      skill({ name: 'Spring', level: 5 }),
+    const cv = withProgramming([
+      skill({ name: 'Java', level: 5 }),
       skill({ name: '  ', level: 3 }),
-      skill({ name: 'Maven', level: 3 }),
+      skill({ name: 'Go', level: 3 }),
     ])
 
-    expect(expertiseLines(cv)[0]?.value).toBe(
-      'Spring (Expert); Maven (Proficient)',
-    )
+    expect(expertiseLines(cv)[0]?.value).toBe('Java (Expert); Go (Proficient)')
   })
 
-  test('collects certification links across the group', () => {
-    const cv = withJava([
+  test('collects certification links across the category', () => {
+    const cv = withProgramming([
       skill({
-        name: 'Spring',
+        name: 'Java',
         certificationLinks: [
           { id: 'l1', url: 'https://example.com/a' },
           { id: 'l2', url: '   ' },
         ],
       }),
       skill({
-        name: 'Maven',
+        name: 'Go',
         certificationLinks: [{ id: 'l3', url: 'https://example.com/b' }],
       }),
     ])
@@ -199,26 +205,48 @@ describe('expertiseLines', () => {
     ])
   })
 
-  test('excludes unchecked groups even when they hold skills', () => {
-    const cv = withJava([skill({ name: 'Spring' })], false)
+  test('excludes unchecked categories even when they hold skills', () => {
+    const cv = withProgramming([skill({ name: 'Java' })], false)
 
     expect(expertiseLines(cv)).toEqual([])
   })
 
-  test('excludes a checked group with nothing filled in', () => {
-    expect(expertiseLines(withJava([]))).toEqual([])
+  test('excludes a checked category with nothing filled in', () => {
+    expect(expertiseLines(withProgramming([]))).toEqual([])
   })
 
-  test('excludes a checked technology whose group is unchecked', () => {
-    const cv = withJava([skill({ name: 'Spring' })], true, false)
+  test('a nested category needs every ancestor checked', () => {
+    const build = (parentSelected: boolean, childSelected: boolean): Cv => {
+      const cv = defaultCv()
+      for (const key of ancestorKeys(nested.key)) {
+        const ancestor = cv.expertise.find((entry) => entry.key === key)
+        if (ancestor) ancestor.selected = parentSelected
+      }
+      const child = cv.expertise.find((entry) => entry.key === nested.key)
+      if (!child) throw new Error('catalog entries missing')
+      child.selected = childSelected
+      child.skills = [skill({ name: 'React', level: 4 })]
+      return cv
+    }
 
-    expect(expertiseLines(cv)).toEqual([])
+    expect(expertiseLines(build(true, true)).map((line) => line.label)).toEqual([
+      nested.name,
+    ])
+    expect(expertiseLines(build(false, true))).toEqual([])
   })
 
-  test('never emits a line for a group that only holds sub-items', () => {
-    const cv = withJava([skill({ name: 'Spring' })])
+  test('labels a nested category by its own name, not its path', () => {
+    const cv = defaultCv()
+    for (const key of [...ancestorKeys(nested.key), nested.key]) {
+      const entry = cv.expertise.find((candidate) => candidate.key === key)
+      if (entry) entry.selected = true
+    }
+    const child = cv.expertise.find((entry) => entry.key === nested.key)
+    if (!child) throw new Error('catalog entries missing')
+    child.skills = [skill({ name: 'Flutter', level: 3 })]
 
-    expect(expertiseLines(cv).map((line) => line.label)).toEqual(['Java'])
+    expect(expertiseLines(cv)[0]?.label).toBe(nested.name)
+    expect(nested.name).not.toContain('>')
   })
 })
 
@@ -233,17 +261,14 @@ describe('experienceEntries', () => {
         startDate: '2016-03',
         endDate: '',
         current: true,
-        bullets: [
-          { id: 'b1', text: 'Shipped the thing' },
-          { id: 'b2', text: '   ' },
-        ],
+        achievements: richTextFromPlain('Shipped the thing\n   '),
         tech: ['React', 'Go'],
       },
     ])
 
     expect(entry?.title).toBe('Senior Engineer – Dice')
     expect(entry?.meta).toBe('Berlin | Mar 2016 – Present')
-    expect(entry?.bullets).toEqual(['Shipped the thing'])
+    expect(entry?.achievements.blocks.map(blockText)).toEqual(['Shipped the thing'])
     expect(entry?.tech).toBe('React, Go')
   })
 })
@@ -274,7 +299,7 @@ describe('projectEntries', () => {
         id: 'p1',
         name: 'Design System',
         role: 'Lead',
-        description: 'A theme starterkit.',
+        description: richTextFromPlain('A theme starterkit.', 'paragraph'),
         tech: ['Drupal'],
         url: 'https://example.com',
         startDate: '2021-01',
@@ -341,7 +366,7 @@ describe('hasSecondPageContent', () => {
 
   test('page-one content alone does not create a second page', () => {
     const cv = defaultCv()
-    cv.profile.summary = 'Builds things.'
+    cv.profile.summary = richTextFromPlain('Builds things.')
 
     expect(hasSecondPageContent(cv)).toBe(false)
   })

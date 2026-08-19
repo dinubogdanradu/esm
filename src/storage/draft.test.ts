@@ -1,9 +1,22 @@
+import {
+  emptyRichText,
+  richTextFromPlain,
+  richTextToPlain,
+} from '@/schema/richText'
 import { defaultCv } from '@/schema/defaults'
 import { EXPERTISE_ENTRIES } from '@/schema/skillCatalog'
 import { DRAFT_KEY, clearDraft, loadDraft, normalizeDraft, saveDraft } from './draft'
 
 // Seeded catalog options carry generated ids, so structural comparisons against a
 // fresh defaultCv() have to ignore them.
+/**
+ * Keys are taken from the catalog rather than written out, so editing skills.md does
+ * not break these tests — only a catalog with no rated or no open category would.
+ */
+const rated = EXPERTISE_ENTRIES.find((entry) => entry.options.length > 0)
+const openCategory = EXPERTISE_ENTRIES.find((entry) => entry.open)
+if (!rated || !openCategory) throw new Error('skills.md needs one rated and one open category')
+
 const withoutIds = (value: unknown): unknown =>
   JSON.parse(
     JSON.stringify(value, (key, inner) => (key === 'id' ? undefined : inner)),
@@ -26,7 +39,7 @@ describe('normalizeDraft', () => {
 
     expect(result.personal.firstName).toBe('Ada')
     expect(result.personal.lastName).toBe('')
-    expect(result.profile.summary).toBe('')
+    expect(result.profile.summary).toEqual(emptyRichText())
     expect(result.experience).toEqual([])
     expect(result.personal).not.toHaveProperty('unexpected')
     expect(result).not.toHaveProperty('retired')
@@ -45,31 +58,67 @@ describe('normalizeDraft', () => {
 
   test('generates ids for items that lack them', () => {
     const result = normalizeDraft({
-      experience: [{ company: 'Dice', bullets: [{ text: 'Shipped' }] }],
+      experience: [{ company: 'Dice', achievements: 'Shipped' }],
     })
 
     const entry = result.experience[0]
     expect(entry?.id).toMatch(/\S/)
-    expect(entry?.bullets[0]?.id).toMatch(/\S/)
+    expect(richTextToPlain(entry?.achievements ?? emptyRichText())).toBe('Shipped')
     expect(entry?.current).toBe(false)
     expect(entry?.tech).toEqual([])
+  })
+
+  test('folds pre-textarea bullet arrays into the achievements text', () => {
+    const result = normalizeDraft({
+      experience: [
+        {
+          company: 'Dice',
+          bullets: [
+            { id: 'b1', text: 'Shipped the thing' },
+            { id: 'b2', text: '  ' },
+            { id: 'b3', text: 'Led the migration' },
+          ],
+        },
+      ],
+    })
+
+    // Stored drafts predate the textarea; their bullets become one line each rather
+    // than being dropped.
+    expect(
+      richTextToPlain(result.experience[0]?.achievements ?? emptyRichText()),
+    ).toBe('Shipped the thing\nLed the migration')
+  })
+
+  test('prefers stored achievements over any leftover bullets', () => {
+    const result = normalizeDraft({
+      experience: [
+        {
+          company: 'Dice',
+          achievements: 'Current text',
+          bullets: [{ id: 'b1', text: 'Stale bullet' }],
+        },
+      ],
+    })
+
+    expect(
+      richTextToPlain(result.experience[0]?.achievements ?? emptyRichText()),
+    ).toBe('Current text')
   })
 
   test('falls back to a valid level when a stored level is out of range', () => {
     const result = normalizeDraft({
       expertise: [
         {
-          key: 'Programming > Java',
+          key: rated.key,
           selected: true,
-          skills: [{ name: 'Spring', level: 99 }],
+          skills: [{ name: rated.options[0], level: 99 }],
         },
       ],
       languages: [{ name: 'German', level: 'Wizard' }],
     })
 
     expect(
-      result.expertise.find((group) => group.key === 'Programming > Java')?.skills[0]
-        ?.level,
+      result.expertise.find((group) => group.key === rated.key)?.skills[0]?.level,
     ).toBe(3)
     expect(result.languages[0]?.level).toBe('Professional')
   })
@@ -80,20 +129,16 @@ describe('normalizeDraft', () => {
   test('rebuilds every catalog container regardless of what was stored', () => {
     const result = normalizeDraft({
       expertise: [
-        { key: 'Programming > Python', selected: true, skills: [{ name: 'Django' }] },
+        { key: openCategory.key, selected: true, skills: [{ name: 'Playwright' }] },
       ],
     })
 
     expect(result.expertise.map((group) => group.key)).toEqual(
       EXPERTISE_ENTRIES.map((entry) => entry.key),
     )
-    expect(groupByKey(result, 'Programming > Python')).toMatchObject({
+    expect(groupByKey(result, openCategory.key)).toMatchObject({
       selected: true,
-      skills: [{ name: 'Django', selected: true }],
-    })
-    expect(groupByKey(result, 'Testing')).toMatchObject({
-      selected: false,
-      skills: [],
+      skills: [{ name: 'Playwright', selected: true }],
     })
   })
 
@@ -110,91 +155,117 @@ describe('normalizeDraft', () => {
     ).toBe(true)
   })
 
-  test('a level-1 group with sub-items exists but holds no skills', () => {
+  test('a category with leaf children is seeded from the catalog, not from storage', () => {
     const result = normalizeDraft({
       expertise: [
-        { key: 'Programming', selected: true, skills: [{ name: 'leaked' }] },
+        { key: rated.key, selected: true, skills: [{ name: 'Not in the catalog' }] },
       ],
     })
 
-    expect(groupByKey(result, 'Programming')).toMatchObject({
-      selected: true,
-      skills: [],
+    // A stored skill that is not a leaf of this category is dropped.
+    expect(groupByKey(result, rated.key)?.skills.map((skill) => skill.name)).toEqual(
+      rated.options,
+    )
+  })
+
+  test('a category that only nests sub-categories holds no skills', () => {
+    // Every child of Mobile development is a leaf except "Other", so it is seeded
+    // with those leaves; an entry with neither is left empty.
+    const result = normalizeDraft({
+      expertise: [{ key: openCategory.key, selected: true, skills: [{ name: 'Elixir' }] }],
     })
+
+    expect(groupByKey(result, openCategory.key)?.skills).toMatchObject([
+      { name: 'Elixir', selected: true },
+    ])
   })
 
   test('seeds predefined containers from the catalog, unchecked', () => {
-    const nodeGroup = groupByKey(normalizeDraft({}), 'Programming > Node.js')
+    const group = groupByKey(normalizeDraft({}), rated.key)
 
-    expect(nodeGroup?.skills.map((skill) => skill.name)).toEqual([
-      'React',
-      'Angular',
-      'Vue',
-    ])
-    expect(nodeGroup?.skills.every((skill) => !skill.selected)).toBe(true)
+    expect(group?.skills.map((skill) => skill.name)).toEqual(rated.options)
+    expect(group?.skills.every((skill) => !skill.selected)).toBe(true)
   })
 
   test('matches stored predefined skills onto catalog options by name', () => {
+    const known = rated.options[0]
     const result = normalizeDraft({
       expertise: [
         {
-          key: 'Programming > Node.js',
+          key: rated.key,
           selected: true,
           skills: [
-            { name: 'Vue', selected: true, level: 5, experienceYears: 3 },
-            { name: 'Backbone', selected: true, level: 4 },
+            { name: known, selected: true, level: 5, experienceMonths: 36 },
+            { name: 'Gone from the catalog', selected: true, level: 4 },
           ],
         },
       ],
     })
 
-    const skills = groupByKey(result, 'Programming > Node.js')?.skills
-    expect(skills?.map((skill) => skill.name)).toEqual(['React', 'Angular', 'Vue'])
-    expect(skills?.find((skill) => skill.name === 'Vue')).toMatchObject({
+    const skills = groupByKey(result, rated.key)?.skills
+    expect(skills?.map((skill) => skill.name)).toEqual(rated.options)
+    expect(skills?.find((skill) => skill.name === known)).toMatchObject({
       selected: true,
       level: 5,
-      experienceYears: 3,
+      experienceMonths: 36,
     })
     // An option no longer in the catalog is dropped rather than carried along.
-    expect(skills?.some((skill) => skill.name === 'Backbone')).toBe(false)
+    expect(skills?.some((skill) => skill.name === 'Gone from the catalog')).toBe(false)
   })
 
   test('treats a stored open-container skill as selected when the flag is absent', () => {
     const result = normalizeDraft({
-      expertise: [{ key: 'Security', selected: true, skills: [{ name: 'Threat modelling' }] }],
+      expertise: [
+        { key: openCategory.key, selected: true, skills: [{ name: 'Threat modelling' }] },
+      ],
     })
 
-    expect(groupByKey(result, 'Security')?.skills[0]?.selected).toBe(true)
+    expect(groupByKey(result, openCategory.key)?.skills[0]?.selected).toBe(true)
   })
 
   test('defaults the per-skill fields', () => {
     const result = normalizeDraft({
-      expertise: [{ key: 'AI', selected: true, skills: [{ name: 'PyTorch' }] }],
+      expertise: [{ key: openCategory.key, selected: true, skills: [{ name: 'PyTorch' }] }],
     })
 
-    expect(groupByKey(result, 'AI')?.skills[0]).toEqual({
+    expect(groupByKey(result, openCategory.key)?.skills[0]).toEqual({
       id: expect.any(String),
       name: 'PyTorch',
       selected: true,
       level: 3,
-      experienceYears: 0,
       experienceMonths: 0,
       lastUsed: '',
       certificationLinks: [],
     })
   })
 
-  test('rejects an out-of-range month remainder and an unknown recency', () => {
+  test('folds a stored years value into the single month total', () => {
     const result = normalizeDraft({
       expertise: [
         {
-          key: 'Programming > Java',
+          key: rated.key,
+          selected: true,
+          skills: [
+            { name: rated.options[0], experienceYears: 5, experienceMonths: 6 },
+          ],
+        },
+      ],
+    })
+
+    // Experience used to be a years/months pair; 5y 6m is 66 months.
+    expect(groupByKey(result, rated.key)?.skills[0]?.experienceMonths).toBe(66)
+  })
+
+  test('rejects an out-of-range total and an unknown recency', () => {
+    const result = normalizeDraft({
+      expertise: [
+        {
+          key: rated.key,
           selected: true,
           skills: [
             {
-              name: 'Spring',
-              experienceYears: -3,
-              experienceMonths: 47,
+              name: rated.options[0],
+              experienceMonths: -3,
               lastUsed: 'yesterday',
             },
           ],
@@ -202,8 +273,7 @@ describe('normalizeDraft', () => {
       ],
     })
 
-    const skill = groupByKey(result, 'Programming > Java')?.skills[0]
-    expect(skill?.experienceYears).toBe(0)
+    const skill = groupByKey(result, rated.key)?.skills[0]
     expect(skill?.experienceMonths).toBe(0)
     expect(skill?.lastUsed).toBe('')
   })
@@ -225,7 +295,7 @@ describe('draft storage', () => {
   test('round-trips a saved draft', () => {
     const cv = defaultCv()
     cv.personal.firstName = 'Ada'
-    cv.profile.summary = 'Builds things.'
+    cv.profile.summary = richTextFromPlain('Builds things.')
 
     saveDraft(cv)
 

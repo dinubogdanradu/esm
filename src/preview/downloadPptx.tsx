@@ -1,4 +1,5 @@
 import type { Cv } from '@/schema/cv'
+import type { RichText } from '@/schema/richText'
 import {
   certificationLine,
   contactLines,
@@ -8,7 +9,7 @@ import {
   hasSecondPageContent,
   languageLine,
   presentSections,
-  profileBullets,
+  renderableRichText,
   projectEntries,
   qualificationLine,
 } from '@/pdf/model'
@@ -299,6 +300,35 @@ const bulletRuns = (lines: string[], indent = 13.5): any[] =>
     },
   }))
 
+/**
+ * Rich text as pptx runs. Marks map onto pptxgenjs's own run options, so the deck
+ * keeps live formatting rather than flattened text; only the last run of a block
+ * breaks the line.
+ */
+const richTextRuns = (
+  value: RichText,
+  options: { indent?: number; fontSize?: number } = {},
+): any[] => {
+  const { indent = 13.5, fontSize } = options
+  const blocks = renderableRichText(value).blocks
+
+  return blocks.flatMap((block, blockIndex) => {
+    const lastBlock = blockIndex === blocks.length - 1
+
+    return block.runs.map((run, runIndex) => ({
+      text: run.text,
+      options: {
+        ...(fontSize === undefined ? {} : { fontSize }),
+        ...(run.bold ? { bold: true } : {}),
+        ...(run.italic ? { italic: true } : {}),
+        ...(run.underline ? { underline: { style: 'sng' } } : {}),
+        ...(block.type === 'bullet' ? { bullet: { indent } } : {}),
+        breakLine: runIndex === block.runs.length - 1 && !lastBlock,
+      },
+    }))
+  })
+}
+
 const addProfile = (slide: Slide, cv: Cv) => {
   addSectionBar(slide, 'Profile summary', 0.257, 1.626, 2.649, 'dark', {
     lineX: 0.347,
@@ -306,7 +336,7 @@ const addProfile = (slide: Slide, cv: Cv) => {
     lineW: 0.625,
     prefixSpaces: 3,
   })
-  slide.addText(bulletRuns(profileBullets(cv.profile.summary), 13.5), {
+  slide.addText(richTextRuns(cv.profile.summary, { indent: 13.5 }), {
     x: 0.257,
     y: 1.973,
     w: 3.881,
@@ -429,7 +459,14 @@ const addExperience = (slide: Slide, cv: Cv) => {
     })
     runs.push({ text: ' ', options: { breakLine: true, fontSize: 8 } })
 
-    const details = [...entry.bullets, ...(entry.tech ? [entry.tech] : [])].filter(Boolean)
+    runs.push(
+      ...richTextRuns(entry.achievements, { indent: 9, fontSize: 8 }).map((run) => ({
+        ...run,
+        options: { ...run.options, breakLine: true },
+      })),
+    )
+
+    const details = [...(entry.tech ? [entry.tech] : [])].filter(Boolean)
     details.forEach((detail) => {
       runs.push({
         text: detail,

@@ -1,13 +1,24 @@
 // @vitest-environment node
 /// <reference types="node" />
+import { richTextFromPlain } from '@/schema/richText'
 import { defaultCv } from '@/schema/defaults'
 import { blankSkill } from '@/schema/defaults'
 import type { Cv } from '@/schema/cv'
-import { selectEntry } from '@/test/expertise'
+import { openEntry, ratedEntry, selectEntry, selectSkill } from '@/test/expertise'
 import { buildPptx, pptxFileName } from './downloadPptx'
 
 /** A .pptx is a zip archive, so a valid one starts with the zip magic bytes. */
 const ZIP_MAGIC = 'PK'
+
+
+// Catalog-derived, so these fixtures survive edits to skills.md.
+const rated = ratedEntry()
+const openCategory = openEntry()
+const ratedSkill = (index: number): string => {
+  const name = rated.options[index % rated.options.length]
+  if (!name) throw new Error('rated category has no options')
+  return name
+}
 
 const render = async (cv: Cv): Promise<Buffer> => {
   const pptx = await buildPptx(cv)
@@ -36,30 +47,29 @@ const populated = (): Cv => {
     // Left empty on purpose: the photo path needs canvas and fetch.
     photo: '',
   }
-  cv.profile.summary = 'Over 18 years of experience.\nGood infrastructure knowledge.'
+  cv.profile.summary = richTextFromPlain('Over 18 years of experience.\nGood infrastructure knowledge.')
 
-  selectEntry(cv, 'Programming')
-  selectEntry(cv, 'Programming > PHP', [
+  // Leaf skills come from the catalog; open categories are named by the user.
+  selectSkill(cv, rated.key, ratedSkill(0), {
+    level: 5,
+    experienceMonths: 147,
+    lastUsed: 'Within last month',
+    certificationLinks: [
+      { id: 'l1', url: 'https://example.com/drupal-11' },
+      { id: 'l2', url: 'https://example.com/drupal-9' },
+    ],
+  })
+  selectSkill(cv, rated.key, ratedSkill(1), {
+    level: 4,
+    lastUsed: 'Within last month',
+  })
+  selectEntry(cv, openCategory.key, [
     {
       ...blankSkill(),
-      name: 'Drupal',
-      level: 5,
-      experienceYears: 12,
-      experienceMonths: 3,
-      lastUsed: 'Within last month',
-      certificationLinks: [
-        { id: 'l1', url: 'https://example.com/drupal-11' },
-        { id: 'l2', url: 'https://example.com/drupal-9' },
-      ],
+      name: 'Kubernetes',
+      level: 3,
+      lastUsed: 'Within last year',
     },
-    { ...blankSkill(), name: 'Laravel', level: 4, lastUsed: 'Within last year' },
-  ])
-  selectEntry(cv, 'Programming > Node.js', [
-    { ...blankSkill(), name: 'React', level: 4, lastUsed: 'Within last month' },
-    { ...blankSkill(), name: 'Angular', selected: false },
-  ])
-  selectEntry(cv, 'Infrastructure', [
-    { ...blankSkill(), name: 'Kubernetes', level: 3, lastUsed: 'Within last year' },
   ])
 
   return cv

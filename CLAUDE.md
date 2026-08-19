@@ -68,11 +68,14 @@ icon carried across needs converting to an ESM import.
   `string`, so inputs stay controlled and rehydrated drafts cannot break them.
   Optional URLs and dates are modelled as `z.union([z.literal(''), ...])`.
 - **`src/schema/skills.md` is the skill hierarchy,** parsed at module load by
-  `skillCatalog.ts` (`?raw` import, no codegen). Edit that file to change the groups;
-  nothing else needs touching. Levels 1 and 2 are both selectable: a level-1 node
-  with sub-items is a group whose children are checkboxes and which holds no skills;
-  a leaf at either level holds skills the user names; a level-2 node with framework
-  children holds those frameworks as checkbox skills. The step renders this as one
+  `skillCatalog.ts` (`?raw` import, no codegen). Edit that file to change the skills;
+  nothing else needs touching. **A trailing `!` marks a leaf** — a concrete skill,
+  which becomes an `option` of its parent rather than an entry of its own, so leaves
+  never appear in `EXPERTISE_ENTRIES` and `findEntry('Programming > Java')` is
+  undefined by design. Without the marker, a heading with sub-items is a category and
+  one without is an *open* category whose skills the user names (that is what the
+  `Other` headings are for). A category can hold both kinds; `items` keeps them in file
+  order and `options` is index-aligned with `skills`. The step renders this as one
   recursive checkbox tree (`EntryNode`), each level indented under its parent and
   wrapped in a `div role="group" aria-label={name}` rather than a `fieldset`, since
   the checkbox already names the level. `expertise[i]` lines up with
@@ -80,14 +83,32 @@ icon carried across needs converting to an ESM import.
   map index. Entry keys are `string`, validated by `refine` against the catalog rather
   than by the compiler, because literals cannot be inferred from a parsed file.
 - **`selected` exists at every level of expertise** — on each entry and on each skill
-  — and decides what reaches the CV. All entries and all predefined options always
-  exist in form state, so anything counting or rendering them must filter on
-  `selected`, and must also check that the parent entry is selected.
+  — and decides what reaches the CV. All entries and all leaf options always exist in
+  form state, so anything counting or rendering them must filter on `selected` and
+  must also confirm every ancestor is selected. `activeExpertise` in `src/pdf/model.ts`
+  does exactly that; reuse it rather than re-deriving the rule.
 - **Expertise validation lives on the array** (`expertiseSchema`), not per entry,
-  because the rules depend on neighbours: a group needs one checked child, and an
-  entry under an unchecked parent must not be validated since its fieldset is hidden.
-  Requirements apply only to checked things; a field-level `required` would block the
-  step over leftover data in something unchecked.
+  because the rules depend on neighbours: a category is satisfied by a checked skill
+  *or* a checked sub-category, and an entry with any unchecked ancestor must not be
+  validated since its section is hidden. Requirements apply only to checked things; a
+  field-level `required` would block the step over leftover data in something
+  unchecked.
+- **Never touch `editor.commands` in the rich text editor.** Tiptap nulls its command
+  manager on destroy and that getter has no null check, unlike `chain()` and `can()`,
+  so it throws "Cannot read properties of null (reading 'commands')" after a teardown —
+  which StrictMode causes on every mount. Guard with `editor.isDestroyed` and go
+  through `chain()`. `useEditor` also captures its options once, so handlers live in
+  refs; otherwise an editor inside a `RepeatableSection` keeps writing to the index it
+  was created with after a sibling is removed.
+- **Rich text is stored in the flat model in `src/schema/richText.ts`,** never the
+  editor's own format. `src/components/fields/richTextDoc.ts` converts to and from
+  Tiptap at the field boundary, so the schema and both exporters see one stable shape.
+  The editor enables only the marks and nodes that model can represent. `RichTextField`
+  suspends on `RichTextEditor` to keep ProseMirror out of the initial bundle.
+- **Tests must not name skill catalog entries.** `skills.md` is data the user edits;
+  derive keys from `EXPERTISE_ENTRIES` (or use `ratedEntry`/`openEntry` from
+  `src/test/expertise.ts`) and assert structural invariants, or every edit to that file
+  breaks the suite.
 - **Errors on an array or object rather than an input** need `messageAtPath` from
   `src/components/fieldErrors.ts`; `useController` never surfaces them.
   `RepeatableSection` does this for its own array, but a custom container must too.
@@ -120,7 +141,17 @@ icon carried across needs converting to an ESM import.
   react-pdf's own StyleSheet subset, not CSS Modules, and cannot flow content
   between columns.
   - **All `Cv` to view-model mapping belongs in the pure `src/pdf/model.ts`,** not
-    inside components. That is what the tests cover.
+    inside components. That is what the tests cover. Fields collected as free text but
+    rendered as bullets — `profile.summary` and `experience[].achievements` — both go
+    through `bulletLines`, which splits on newlines and strips any bullet characters
+    the user typed.
+  - **The left column's page budget is tight, and fails abruptly.** The two columns are
+    a flex row, which react-pdf cannot split, so overflowing page one by a point emits a
+    *blank* continuation page (card background only) and a larger overflow moves the
+    whole row, leaving page one with just the header. `rowDivider`'s margins and
+    `section`'s `marginBottom` are load-bearing for this, not merely cosmetic. Verify
+    with the "keeps a full CV to two pages, with neither of them empty" test rather than
+    by eye — the behaviour is not monotonic in content length.
   - **Do not reintroduce absolute positioning.** The template it came from was
     absolutely positioned at fixed offsets, which clips user content of unknown
     length. Sections are flex stacks with `wrap` and `minPresenceAhead` so overflow
@@ -133,6 +164,29 @@ icon carried across needs converting to an ESM import.
     this.
   - `BRAND_LOGO` in `CvDocument.tsx` is static branding, not CV data, and appears on
     every generated CV.
+  - **A border on an `Image` never shows**: react-pdf strokes it before painting the
+    image, which then covers it. Use a wrapping `View` with a background and padding —
+    see `photoFrame`. Also note an undecodable image is skipped silently, so image
+    fixtures need real PNG bytes or they prove nothing.
+  - **Gradients need an SVG shading rect**, not `backgroundColor`, which is
+    solid-only — see `PageBackground`. Give it `fixed` so it repeats on continuation
+    pages. react-pdf reads gradient coords as `props.x2 || 1`, so never pass `0` for a
+    coordinate you want to stay `0`; use a shared non-zero value instead.
+  - **An absolutely positioned box needs both edges anchored** (`left` *and* `right`),
+    or it collapses to a narrow width and wraps its text mid-word. Centring a `Text`
+    inside a `View` needs `justifyContent: 'center'` on a row; `textAlign: 'center'`
+    alone leaves it at the content-box edge.
+  - `pdfLayout.test.tsx` reads text positions and filled paths back out of the
+    rendered PDF via `pdfjs-dist`, so placement is checked against the real output.
+    Prefer that over eyeballing when changing geometry. Two gotchas when reading paths:
+    those coordinates have **y growing downward** (unlike the text positions in the
+    same file), and react-pdf emits four corner curves whatever the radius — a square
+    corner is the degenerate one that passes through the corner point. It cannot see
+    SVG at all, so shape geometry is unit-tested instead — see `chevronPoints`. It also
+    counts dashed strokes and checks font subsets, which is how "is this bold" and "is
+    there a rule here" get verified rather than assumed.
+  - **Borders draw inside the box** (border-box sizing), so `photoSize` is the outer
+    diameter and a border shrinks the visible image rather than growing the circle.
 - **`src/preview/`** — `usePdfBlobUrl` debounces rendering and revokes superseded
   blob URLs; `PdfPreview` is `lazy`-loaded and subscribes to form state itself so
   keystrokes do not re-render the shell. Keep react-pdf and pptxgenjs behind dynamic
@@ -174,8 +228,10 @@ from `src/test/setup.ts`.
 Document-rendering tests (`CvDocument`, `downloadPptx`) run under
 `// @vitest-environment node` with `/// <reference types="node" />`, since
 `tsconfig.app.json` deliberately excludes node types from app code. Build expertise
-fixtures with `selectEntry` from `src/test/expertise.ts` — it checks the key against
-the catalog, and remember a technology needs its parent group selected too.
+fixtures with the helpers in `src/test/expertise.ts` — `selectSkill` ticks one of a
+category's catalog leaves, `selectEntry` sets the skills of an open category. Both
+validate the key against the catalog, and a nested category needs its ancestors
+selected too.
 
 Keep `@types/react` and `@types/react-dom` on the same major as the React runtime.
 npm will happily install types a major ahead, which produces type errors that look

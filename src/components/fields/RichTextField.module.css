@@ -1,0 +1,77 @@
+.wrapper {
+  border: 1px solid rgb(31 41 51 / 22%);
+  border-radius: 0.375rem;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.wrapper[data-invalid='true'] {
+  border-color: #d1495b;
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-bottom: 1px solid rgb(31 41 51 / 12%);
+  background: rgb(31 41 51 / 3%);
+}
+
+.toolButton {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.375rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  background: none;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+.toolButton:hover {
+  background: rgb(31 41 51 / 8%);
+}
+
+.toolButton[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: rgb(121 210 181 / 25%);
+}
+
+.bold {
+  font-weight: 700;
+}
+
+.italic {
+  font-style: italic;
+}
+
+.underline {
+  text-decoration: underline;
+}
+
+/* ProseMirror renders into this element. */
+.editor :global(.ProseMirror) {
+  min-height: 6rem;
+  padding: 0.5rem;
+  outline: none;
+}
+
+.editor :global(.ProseMirror p) {
+  margin: 0 0 0.375rem;
+}
+
+.editor :global(.ProseMirror ul) {
+  margin: 0 0 0.375rem;
+  padding-left: 1.25rem;
+}
+
+.editor :global(.ProseMirror:focus-visible) {
+  outline: none;
+}
+
+.loading {
+  padding: 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}

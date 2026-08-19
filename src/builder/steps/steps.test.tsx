@@ -2,7 +2,13 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import AppRoutes from '@/AppRoutes'
-import { clearDraft } from '@/storage/draft'
+import { DRAFT_KEY, clearDraft } from '@/storage/draft'
+import {
+  EXPERTISE_ENTRIES,
+  TOP_LEVEL_ENTRIES,
+  ancestorKeys,
+  findEntry,
+} from '@/schema/skillCatalog'
 
 const renderStep = (stepId: string) =>
   render(
@@ -94,7 +100,6 @@ describe('experience step', () => {
     await user.type(screen.getByLabelText(/Company/), 'Dice')
     await user.type(screen.getByLabelText(/Position/), 'Engineer')
     await user.type(screen.getByLabelText(/^Start/), '2016-03')
-    await user.type(screen.getByLabelText(/Achievement/), 'Shipped the thing')
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(
@@ -105,15 +110,25 @@ describe('experience step', () => {
   })
 
   test('a current role advances without an end date', async () => {
+    // Achievements are seeded through a draft: typing into the rich text editor is
+    // ProseMirror's job, and its behaviour under jsdom is not what this test is about.
+    window.localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        experience: [
+          {
+            company: 'Dice',
+            position: 'Engineer',
+            startDate: '2016-03',
+            current: true,
+            achievements: 'Shipped the thing',
+          },
+        ],
+      }),
+    )
     const user = userEvent.setup()
     renderStep('experience')
 
-    await user.click(screen.getByRole('button', { name: '+ Add role' }))
-    await user.type(screen.getByLabelText(/Company/), 'Dice')
-    await user.type(screen.getByLabelText(/Position/), 'Engineer')
-    await user.type(screen.getByLabelText(/^Start/), '2016-03')
-    await user.type(screen.getByLabelText(/Achievement/), 'Shipped the thing')
-    await user.click(screen.getByLabelText('I currently work here'))
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(
@@ -123,168 +138,191 @@ describe('experience step', () => {
     ).toBeVisible()
   })
 
-  test('a new role starts with one bullet that must be filled', async () => {
+  test('edits achievements in a formatted editor', async () => {
     const user = userEvent.setup()
     renderStep('experience')
 
     await user.click(screen.getByRole('button', { name: '+ Add role' }))
 
-    expect(screen.getByLabelText(/Achievement/)).toBeVisible()
+    expect(
+      await screen.findByRole('textbox', { name: 'Achievements' }),
+    ).toBeVisible()
+    for (const control of ['Bold', 'Italic', 'Underline', 'Bullet list']) {
+      expect(screen.getByRole('button', { name: control })).toBeVisible()
+    }
+  })
 
-    await user.click(screen.getByRole('button', { name: 'Remove bullet 1' }))
+  test('a role needs at least one achievement', async () => {
+    const user = userEvent.setup()
+    renderStep('experience')
+
+    await user.click(screen.getByRole('button', { name: '+ Add role' }))
+    await user.type(screen.getByLabelText(/Company/), 'Dice')
+    await user.type(screen.getByLabelText(/Position/), 'Engineer')
+    await user.type(screen.getByLabelText(/^Start/), '2016-03')
+    await user.click(screen.getByLabelText('I currently work here'))
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
-    expect(await screen.findByText('Add at least one bullet')).toBeVisible()
+    expect(await screen.findByText('Add at least one achievement')).toBeVisible()
+  })
+
+  test('shows a stored achievement in the editor', async () => {
+    window.localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        experience: [{ company: 'Dice', achievements: 'Shipped the thing' }],
+      }),
+    )
+    renderStep('experience')
+
+    expect(
+      await screen.findByRole('textbox', { name: 'Achievements' }),
+    ).toHaveTextContent('Shipped the thing')
   })
 })
 
 describe('expertise step', () => {
-  const topLevelNames = [
-    'Programming',
-    'Infrastructure',
-    'Data engineering',
-    'Testing',
-    'Security',
-    'Management',
-    'AI',
-  ]
+  // Everything is derived from skills.md: that file is data the user edits, so naming
+  // categories here would make these tests break on every edit.
+  const groupEntry = TOP_LEVEL_ENTRIES.find((entry) => entry.childKeys.length > 0)
+  if (!groupEntry) throw new Error('skills.md needs a top-level category with children')
 
-  test('offers only the level-1 headings, all at the same level', () => {
+  const childEntry = findEntry(groupEntry.childKeys[0] ?? '')
+  if (!childEntry) throw new Error('missing child category')
+
+  const rated = EXPERTISE_ENTRIES.find(
+    (entry) => entry.options.length > 0 && ancestorKeys(entry.key).length > 0,
+  )
+  const nestedOpen = EXPERTISE_ENTRIES.find(
+    (entry) => entry.open && entry.depth > 1,
+  )
+  const topOpen = TOP_LEVEL_ENTRIES.find((entry) => entry.open)
+  if (!rated || !nestedOpen || !topOpen) {
+    throw new Error('skills.md needs a nested rated category, a nested open one, and a top-level open one')
+  }
+
+  const leafName = rated.options[0] ?? ''
+
+  /**
+   * Checks a category and every ancestor above it, top down, returning the innermost
+   * group. Each step is scoped to its parent because names repeat across the tree —
+   * "Other" appears at several levels — so a global lookup would be ambiguous.
+   */
+  const openTo = async (
+    user: ReturnType<typeof userEvent.setup>,
+    key: string,
+  ): Promise<HTMLElement> => {
+    let scope: HTMLElement | undefined
+
+    for (const step of [...ancestorKeys(key).reverse(), key]) {
+      const entry = findEntry(step)
+      if (!entry) continue
+
+      const where = scope ? within(scope) : screen
+      await user.click(where.getByRole('checkbox', { name: entry.name }))
+      scope = where.getByRole('group', { name: entry.name })
+    }
+
+    if (!scope) throw new Error(`nothing opened for "${key}"`)
+    return scope
+  }
+
+  test('offers only the top-level categories, all at the same level', () => {
     renderStep('expertise')
 
-    const checkboxes = screen.getAllByRole('checkbox')
-    expect(checkboxes.map((box) => box.getAttribute('aria-label') ?? '')).toEqual(
-      checkboxes.map(() => ''),
-    )
-    expect(checkboxes).toHaveLength(topLevelNames.length)
-
-    for (const name of topLevelNames) {
-      expect(screen.getByRole('checkbox', { name })).not.toBeChecked()
+    expect(screen.getAllByRole('checkbox')).toHaveLength(TOP_LEVEL_ENTRIES.length)
+    for (const entry of TOP_LEVEL_ENTRIES) {
+      expect(screen.getByRole('checkbox', { name: entry.name })).not.toBeChecked()
     }
-    // Level-2 items are not offered until their group is checked.
-    expect(screen.queryByRole('checkbox', { name: 'Java' })).toBeNull()
-    expect(screen.queryByRole('checkbox', { name: 'Node.js' })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: childEntry.name })).toBeNull()
   })
 
-  test('a level-1 group with sub-items reveals them rather than a skill list', async () => {
+  test('a category reveals its leaf skills and sub-categories in file order', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
+    await user.click(screen.getByRole('checkbox', { name: groupEntry.name }))
 
-    const group = screen.getByRole('group', { name: 'Programming' })
-    expect(group).toBeVisible()
-    // The technologies sit inside the group they belong to, not in a separate
-    // section further down the step.
-    for (const technology of ['Java', 'Python', 'Node.js', 'Mobile development']) {
-      expect(
-        within(group).getByRole('checkbox', { name: technology }),
-      ).not.toBeChecked()
-    }
-    expect(screen.queryByRole('button', { name: '+ Add skill' })).toBeNull()
+    const group = screen.getByRole('group', { name: groupEntry.name })
+    const labels = within(group)
+      .getAllByRole('checkbox')
+      .map((box) => box.getAttribute('id'))
+      .map((id) => group.querySelector(`label[for="${id}"]`)?.textContent)
+
+    const expected = groupEntry.items.map((item) =>
+      item.kind === 'skill' ? item.name : (findEntry(item.key)?.name ?? ''),
+    )
+    expect(labels).toEqual(expected)
+  })
+
+  test('a leaf skill opens its own attributes, not a skill list', async () => {
+    const user = userEvent.setup()
+    renderStep('expertise')
+
+    const category = await openTo(user, rated.key)
+    expect(screen.queryByLabelText(/Proficiency/)).toBeNull()
+
+    await user.click(within(category).getByRole('checkbox', { name: leafName }))
+
+    const leaf = within(category).getByRole('group', { name: leafName })
+    expect(within(leaf).getByLabelText(/Proficiency/)).toBeVisible()
+    expect(within(leaf).getByLabelText(/Last used/)).toBeVisible()
+    // The leaf names itself, so there is nothing to type and nothing to add.
+    expect(screen.queryByLabelText(/^Skill/)).toBeNull()
+  })
+
+  test('a category with no sub-items lets the user name its skills', async () => {
+    const user = userEvent.setup()
+    renderStep('expertise')
+
+    await user.click(screen.getByRole('checkbox', { name: topOpen.name }))
+
+    const group = screen.getByRole('group', { name: topOpen.name })
+    expect(within(group).getByRole('button', { name: '+ Add skill' })).toBeVisible()
+  })
+
+  test('a nested open category sits inside its parent', async () => {
+    const user = userEvent.setup()
+    renderStep('expertise')
+
+    const own = await openTo(user, nestedOpen.key)
+
+    expect(within(own).getByRole('button', { name: '+ Add skill' })).toBeVisible()
   })
 
   test('each level nests inside the one above it', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Node.js' }))
-    await user.click(screen.getByRole('checkbox', { name: 'React' }))
+    const category = await openTo(user, rated.key)
+    await user.click(within(category).getByRole('checkbox', { name: leafName }))
 
-    const programming = screen.getByRole('group', { name: 'Programming' })
-    const nodeJs = within(programming).getByRole('group', { name: 'Node.js' })
-    const react = within(nodeJs).getByRole('group', { name: 'React' })
-
-    expect(within(react).getByLabelText(/Proficiency/)).toBeVisible()
+    // openTo descended through every level, so the leaf being inside its category
+    // proves the nesting.
+    expect(within(category).getByRole('group', { name: leafName })).toBeVisible()
   })
 
-  test('a level-1 leaf holds skills directly', async () => {
+  test('unchecking a category hides its subtree but keeps the data', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Infrastructure' }))
+    const category = await openTo(user, rated.key)
+    await user.click(within(category).getByRole('checkbox', { name: leafName }))
+    await user.selectOptions(screen.getByLabelText(/Proficiency/), '5')
 
-    expect(screen.getByRole('group', { name: 'Infrastructure' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '+ Add skill' })).toBeVisible()
+    await user.click(screen.getByRole('checkbox', { name: groupEntry.name }))
+    expect(screen.queryByRole('checkbox', { name: leafName })).toBeNull()
+
+    await user.click(screen.getByRole('checkbox', { name: groupEntry.name }))
+    expect(screen.getByRole('checkbox', { name: leafName })).toBeChecked()
+    expect(screen.getByLabelText(/Proficiency/)).toHaveValue('5')
   })
 
-  test('a technology opens its own section nested inside its group', async () => {
+  test('a checked category needs a skill or a sub-category checked', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Java' }))
-
-    const group = screen.getByRole('group', { name: 'Programming' })
-    expect(within(group).getByRole('group', { name: 'Java' })).toBeVisible()
-    expect(screen.getByRole('button', { name: '+ Add skill' })).toBeVisible()
-  })
-
-  test('unchecking the group hides the technologies but keeps their data', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Java' }))
-    await user.click(screen.getByRole('button', { name: '+ Add skill' }))
-    await user.type(screen.getByLabelText(/^Skill/), 'Spring')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    expect(screen.queryByRole('checkbox', { name: 'Java' })).toBeNull()
-    expect(screen.queryByLabelText(/^Skill/)).toBeNull()
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    expect(screen.getByRole('checkbox', { name: 'Java' })).toBeChecked()
-    expect(screen.getByLabelText(/^Skill/)).toHaveValue('Spring')
-  })
-
-  test('a technology with sub-items lists them as checkboxes instead of a text input', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Node.js' }))
-
-    for (const framework of ['React', 'Angular', 'Vue']) {
-      expect(screen.getByRole('checkbox', { name: framework })).not.toBeChecked()
-    }
-    expect(screen.queryByLabelText(/^Skill/)).toBeNull()
-    expect(screen.queryByRole('button', { name: '+ Add skill' })).toBeNull()
-  })
-
-  test('checking a framework reveals only its own attributes', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Mobile development' }))
-    expect(screen.queryByLabelText(/Proficiency/)).toBeNull()
-
-    await user.click(screen.getByRole('checkbox', { name: 'Flutter' }))
-
-    expect(screen.getAllByLabelText(/Proficiency/)).toHaveLength(1)
-    expect(screen.getAllByLabelText(/Last used/)).toHaveLength(1)
-  })
-
-  test('a checked group needs at least one technology checked', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-
-    expect(
-      await screen.findByText('Select at least one item, or uncheck this group'),
-    ).toBeVisible()
-  })
-
-  test('a checked technology needs at least one framework checked', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Node.js' }))
+    await user.click(screen.getByRole('checkbox', { name: groupEntry.name }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(
@@ -294,13 +332,12 @@ describe('expertise step', () => {
     ).toBeVisible()
   })
 
-  test('a checked framework still needs its recency', async () => {
+  test('a checked leaf skill still needs its recency', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Node.js' }))
-    await user.click(screen.getByRole('checkbox', { name: 'React' }))
+    const category = await openTo(user, rated.key)
+    await user.click(within(category).getByRole('checkbox', { name: leafName }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(
@@ -308,13 +345,12 @@ describe('expertise step', () => {
     ).toBeVisible()
   })
 
-  test('a fully filled framework advances', async () => {
+  test('a fully filled leaf skill advances', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Node.js' }))
-    await user.click(screen.getByRole('checkbox', { name: 'React' }))
+    const category = await openTo(user, rated.key)
+    await user.click(within(category).getByRole('checkbox', { name: leafName }))
     await user.selectOptions(
       screen.getByLabelText(/Last used/),
       'Within last month',
@@ -326,13 +362,12 @@ describe('expertise step', () => {
     ).toBeVisible()
   })
 
-  test('an incomplete technology under an unchecked group does not block the step', async () => {
+  test('an incomplete subtree under an unchecked parent does not block the step', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Node.js' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
+    await openTo(user, rated.key)
+    await user.click(screen.getByRole('checkbox', { name: groupEntry.name }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(
@@ -340,48 +375,11 @@ describe('expertise step', () => {
     ).toBeVisible()
   })
 
-  test('an unchecked technology with incomplete data does not block the step', async () => {
+  test('an open category reports its error on the skill list', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Java' }))
-    await user.click(screen.getByRole('button', { name: '+ Add skill' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Java' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Python' }))
-    await user.click(screen.getByRole('button', { name: '+ Add skill' }))
-    await user.type(screen.getByLabelText(/^Skill/), 'Django')
-    await user.selectOptions(
-      screen.getByLabelText(/Last used/),
-      'Within last month',
-    )
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-
-    expect(
-      await screen.findByRole('heading', { name: 'Experience summary' }),
-    ).toBeVisible()
-  })
-
-  test('a checked technology requires a skill name and a recency', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Programming' }))
-    await user.click(screen.getByRole('checkbox', { name: 'Java' }))
-    await user.click(screen.getByRole('button', { name: '+ Add skill' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
-
-    expect(await screen.findByText('Skill name is required')).toBeVisible()
-    expect(
-      screen.getByText('Select when you last used this skill'),
-    ).toBeVisible()
-  })
-
-  test('a checked open container with no skills says so', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'AI' }))
+    await user.click(screen.getByRole('checkbox', { name: topOpen.name }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(
@@ -391,40 +389,25 @@ describe('expertise step', () => {
     ).toBeVisible()
   })
 
-  test('proficiency is always offered and stored as a number', async () => {
+  test('collects experience, recency and certification links for a leaf skill', async () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Security' }))
-    await user.click(screen.getByRole('button', { name: '+ Add skill' }))
-    await user.selectOptions(screen.getByLabelText(/Proficiency/), '5')
+    const category = await openTo(user, rated.key)
+    await user.click(within(category).getByRole('checkbox', { name: leafName }))
 
-    expect(screen.getByLabelText(/Proficiency/)).toHaveValue('5')
-  })
-
-  test('collects experience, recency and certification links per skill', async () => {
-    const user = userEvent.setup()
-    renderStep('expertise')
-
-    await user.click(screen.getByRole('checkbox', { name: 'Infrastructure' }))
-    await user.click(screen.getByRole('button', { name: '+ Add skill' }))
-
-    await user.type(screen.getByLabelText(/^Skill/), 'Kubernetes')
     await user.selectOptions(
       screen.getByLabelText(/Last used/),
       'Within last year',
     )
-    await user.clear(screen.getByLabelText(/Experience \(years\)/))
-    await user.type(screen.getByLabelText(/Experience \(years\)/), '4')
-    await user.clear(screen.getByLabelText(/Experience \(months\)/))
-    await user.type(screen.getByLabelText(/Experience \(months\)/), '6')
+    await user.clear(screen.getByLabelText(/Experience \(in months\)/))
+    await user.type(screen.getByLabelText(/Experience \(in months\)/), '48')
 
     await user.click(screen.getByRole('button', { name: '+ Add certification link' }))
     await user.type(
       screen.getByLabelText(/Certification URL/),
-      'https://example.com/cka',
+      'https://example.com/cert',
     )
-
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(
@@ -436,16 +419,14 @@ describe('expertise step', () => {
     const user = userEvent.setup()
     renderStep('expertise')
 
-    await user.click(screen.getByRole('checkbox', { name: 'Data engineering' }))
-    await user.click(screen.getByRole('button', { name: '+ Add skill' }))
-    await user.type(screen.getByLabelText(/^Skill/), 'Spark')
+    const category = await openTo(user, rated.key)
+    await user.click(within(category).getByRole('checkbox', { name: leafName }))
     await user.selectOptions(
       screen.getByLabelText(/Last used/),
       'Within last month',
     )
     await user.click(screen.getByRole('button', { name: '+ Add certification link' }))
     await user.type(screen.getByLabelText(/Certification URL/), 'not-a-url')
-
     await user.click(screen.getByRole('button', { name: 'Next' }))
 
     expect(await screen.findByText('Enter a valid URL')).toBeVisible()

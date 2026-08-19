@@ -28,7 +28,9 @@ download, but all three rest on foundations that do not extend:
   3 jobs and 9 skills in `practicalForm.js` exist to hide this.
 - **Cruft.** `react-pdf` and `react-responsive` are installed but never imported;
   `form.js` pulls a jest-dom matcher into the app bundle.
-- Experience descriptions are one textarea blob rather than structured bullets.
+- Experience descriptions are one textarea blob rendered as a blob. (Achievements are
+  free text again today, but the template splits them into bullets — the objection was
+  always to unstructured *output*, not to a textarea as input.)
 
 ## Decisions
 
@@ -210,15 +212,14 @@ type Cv = {
       name: string                 // typed in an open container, fixed otherwise
       selected: boolean            // whether this skill reaches the CV
       level: 1 | 2 | 3 | 4 | 5     // always asked
-      experienceYears: number      // 0-60
-      experienceMonths: number     // 0-11, remainder beyond whole years
+      experienceMonths: number     // single total, 0-720 (sixty years)
       lastUsed: '' | 'Within last month' | 'Within last year'
               | 'More than a year ago'   // required when checked
       certificationLinks: Array<{ id: string, url: string }>
     }>
   }>
 
-  // Experience summary: full entries with achievement bullets
+  // Experience summary: full entries, achievements as free text
   experience: Array<{
     id: string
     company: string            // required
@@ -227,7 +228,7 @@ type Cv = {
     startDate: MonthYear       // required
     endDate?: MonthYear        // omitted when current is true
     current: boolean
-    bullets: Array<{ id: string, text: string }>   // at least one
+    achievements: string      // required; one per line, rendered as bullets
     tech: string[]             // tag input
   }>
 
@@ -285,33 +286,37 @@ one reveals its fieldset.
 `?raw` import, so that file is the single source of truth and needs no codegen step.
 Level 1 is a group, level 2 a technology, level 3 a framework.
 
-**Levels 1 and 2 are both selectable,** so the form mirrors the file's shape rather
-than flattening it. The step renders one nested checkbox tree: level-1 headings are
-stacked one per line, and checking any node reveals its contents indented directly
-beneath it, so the form's shape matches skills.md at a glance. `EntryNode` is
-recursive, which is what keeps the nesting honest — the same component renders a
-group and a technology, and the depth comes from the catalog rather than from
-hand-written levels.
+**A trailing `!` marks a leaf,** which is what separates a skill from a category.
+Depth alone does not decide it, so the hierarchy can be as deep as the file needs:
+
+- **`## Java !`** — a leaf: a concrete skill named by the heading. It is *not* an
+  entry of its own; it becomes an `option` of its parent, because a skill is
+  something you tick rather than something you nest under. Any children under a
+  marked node are ignored.
+- **`## Node.js`** with sub-items — a category: checking it reveals its children.
+- **`## Other`** with no sub-items and no marker — an open category: the user names
+  its own skills in a repeatable list. This is what the `Other` entries are for.
+
+A category can hold both, and `Programming` does: seven leaf languages plus
+`Node.js`, `Mobile development` and `Other`. `items` preserves file order so the two
+kinds interleave in the form exactly as written, while `options` is the leaf-name list
+that `skills` is index-aligned with.
+
+The current file yields 12 entries, the leaves living inside them. `expertise[i]`
+lines up with `EXPERTISE_ENTRIES[i]`, which is what `entryIndex` resolves for form
+paths. Editing skills.md changes the form and stored drafts with no other code
+change; `normalizeDraft` rebuilds entries from the catalog, drops any it no longer
+lists, and matches leaf skills by name.
+
+The step renders one nested checkbox tree: top-level categories stacked one per line,
+and checking any node reveals its contents indented directly beneath it, so the
+form's shape matches skills.md at a glance. `EntryNode` is recursive, which is what
+keeps the nesting honest — one component renders every level, and depth comes from the
+catalog rather than from hand-written levels.
 
 Each revealed section is a `div` with `role="group"` and an `aria-label`, not a
 `fieldset` with a `legend`: the checkbox already names that level, so a legend would
 repeat it. Tests rely on those accessible names to assert the nesting.
-
-What a checked entry reveals depends on what sits under it in the file:
-
-- **A level-1 node with sub-items** (`Programming`) is a group: checking it reveals
-  checkboxes for its technologies, and it holds no skills of its own.
-- **A leaf at level 1 or 2** (`Infrastructure`, `Programming > Java`) holds skills
-  the user names themselves, in a repeatable list.
-- **A level-2 node whose children are frameworks** (`Programming > Node.js`) holds
-  those frameworks as its skills, so they render as checkboxes and checking one
-  reveals its attributes.
-
-The current file yields 16 entries — seven level-1 plus nine technologies.
-`expertise[i]` lines up with `EXPERTISE_ENTRIES[i]`, which is what `entryIndex`
-resolves for form paths. Editing skills.md changes the form and stored drafts with no
-other code change; `normalizeDraft` rebuilds entries from the catalog, drops any it
-no longer lists, and matches predefined options by name.
 
 The trade-off: entry keys are `string` rather than a literal union, because
 TypeScript cannot infer literals from a file parsed at runtime. Membership is
@@ -319,15 +324,23 @@ enforced by a zod `refine` against the catalog instead of by the compiler.
 
 Decisions in that change:
 
-- **Experience is a duration pair.** Years plus a remainder capped at 11 months, so
-  "3 years 6 months" cannot also be entered as "3 years 18 months". If months was
-  meant as an independent total instead, lift `SKILL_MAX_MONTHS`.
+- **Experience is a single total in months**, capped at 720 (sixty years). It began as
+  a years/months pair; `normalizeDraft` folds any stored years into the total rather
+  than dropping them. The PDF still prints "5y 6m" rather than "66 months", since whole
+  years read better on a CV — `formatExperience` does that conversion.
 - **Expertise validation lives on the array, not on each entry.** `expertiseSchema`
   is `z.array(expertiseGroupSchema).superRefine(...)`, because the rules depend on
-  neighbours: a group requires one checked child, and an entry whose parent is
-  unchecked must not be validated at all since its fieldset is hidden. A per-entry
-  refinement cannot see either. Requirements apply only to checked things, so
-  unchecking keeps data for later without failing validation in the meantime.
+  neighbours: a category is satisfied by either a checked skill of its own or a
+  checked sub-category, and an entry with any unchecked ancestor must not be
+  validated at all since its section is hidden. A per-entry refinement can see
+  neither. The ancestor check walks the full chain via `ancestorKeys`, not just the
+  direct parent, since the tree can be deeper than two levels. Requirements apply
+  only to checked things, so unchecking keeps data for later without failing
+  validation in the meantime.
+- **The "select at least one" error lands on `selected` or on `skills`** depending on
+  whether the category has sub-categories. An open category shows it through its
+  `RepeatableSection`, so `EntryNode` deliberately does not claim that path too —
+  otherwise the message renders twice.
 - **`selected` on a skill unifies both container kinds.** Predefined containers are
   seeded with one entry per catalog option, off by default, so unchecking a framework
   keeps the years and links already typed for it. Skills the user adds by hand are
@@ -343,13 +356,167 @@ Decisions in that change:
   step.
 - **Named `certificationLinks`,** to keep it distinct from the CV-level
   Certifications & Trainings section.
-- **`DRAFT_KEY` is at v4.** v2 replaced free-text group names with a flat catalog, v3
-  with the skills.md hierarchy keyed by path, and v4 made level-1 headings selectable
-  in their own right. No old shape maps onto the current one, so those drafts are
-  discarded.
+- **`DRAFT_KEY` is at v5.** v2 replaced free-text group names with a flat catalog, v3
+  with the skills.md hierarchy keyed by path, v4 made level-1 headings selectable in
+  their own right, and v5 introduced the `!` marker, which moved leaves out of the
+  entry list and into their parent. No old shape maps onto the current one, so those
+  drafts are discarded.
 - **The PDF only emits skill-holding entries whose parent is also checked,** so an
   unchecked `Programming` hides its technologies from the CV even if they are still
   ticked underneath.
+
+### Header geometry
+
+The header was reworked after the template was restyled:
+
+- **The chevrons are three left-pointing marks**, palest first, each with a
+  90-degree tip and a triangular notch cut into the right side. The notch leaves *two*
+  vertical right edges rather than one, which is what makes them read as chevrons
+  rather than plain triangles. They sit tip-to-edge with no gap, so each tip lands on
+  the axis formed by the right edges of the mark before it.
+
+  `chevronPoints` derives the six points from the `CHEVRON` constant rather than
+  hard-coding them, which keeps three properties true by construction: the vertical
+  span is twice the mark width (that is what makes the tip 90 degrees, so changing the
+  width keeps the angle), the notch edges stay parallel to the outer arms so both arms
+  keep an even thickness, and the shape stays symmetric. Current values: 34pt marks in
+  a 102x80 box, 13.6pt notch depth, 20.4pt arms. The geometry is unit-tested because
+  pdfjs cannot see SVG — and note the fractional notch depth leaves floating-point
+  dust, so those assertions use `toBeCloseTo`.
+- **The name and headline share a centre axis.** `identityBlock` shrinks to the
+  pill's width, so centring inside it lands both on the pill's centre rather than the
+  header's. The pill itself is a row with `justifyContent: 'center'`, because
+  `textAlign: 'center'` alone left the name at the content-box's left edge.
+- **The contact details are pinned to the header's bottom-right** and 30% larger
+  (`type.contact`, with the icons scaled to match). The absolute box anchors *both*
+  `left` and `right`: with only `right` set it collapsed to a narrow width and wrapped
+  the strings mid-word, so "Lisbon, Portugal" rendered as "Buc" / "Rom" running off
+  the page edge.
+
+- **The page background is a vertical gradient** (`pageGradientTop` to
+  `pageGradientBottom`). react-pdf's `backgroundColor` takes solid colours only, so
+  `PageBackground` draws an SVG shading rect instead: `fixed` so it repeats on
+  continuation pages, and rendered as each Page's first child so content paints over
+  it. The page style keeps the top stop as a flat fallback.
+
+  Two traps here. react-pdf reads gradient coordinates as `props.x2 || 1`, so passing
+  `x2={0}` for a vertical axis silently becomes `1` and tilts the gradient — both x
+  values are set to the page's centre line instead. And the pattern matrix flips y
+  (`[1 0 0 -1 0 600]`), so the *first* stop is the one that lands at the page top.
+  Tests assert the axis is vertical, spans the page, and carries the two theme colours.
+
+- **Section label bars and the lateral card tabs are square**; only the card keeps a
+  rounded corner.
+- **The contact details are bold**, sharing the Roboto Bold subset with the name and
+  headline.
+- **A dashed rule closes the profile summary and qualifications sections**, reusing
+  `rowDivider`. Each is drawn only when a later section follows, so the column never
+  ends on a dangling rule. Its top margin is 4pt against 14pt below, which keeps the
+  rule attached to the section it closes *and* keeps the left column on page one.
+
+### Rich text fields
+
+Profile summary, experience achievements and project descriptions are edited with a
+small WYSIWYG editor (bold, italic, underline, bullet list) rather than plain
+textareas.
+
+**The stored shape is not the editor's.** `src/schema/richText.ts` defines a flat
+model — a list of blocks, each a list of styled runs — and `richTextDoc.ts` converts
+to and from Tiptap's nested document at the field boundary. The schema, the PDF and
+the PPTX therefore all consume one stable shape that cannot drift if the editor
+library changes, and zod validates it without recursion. Nested lists are not
+representable, which is why the editor enables only a flat bullet list: the editor
+cannot produce anything the exporters would have to drop.
+
+- **The editor must never touch `editor.commands`.** Tiptap nulls its command manager
+  on destroy, and that getter alone has no null check — `chain()` and `can()` fall back
+  safely. StrictMode tears the editor down and remounts it, so an effect that writes
+  content into a rehydrated draft hit the destroyed instance and threw. The effect now
+  checks `isDestroyed` and goes through `chain()`. A test pins the library behaviour so
+  the guard can be dropped if Tiptap ever fixes it.
+- **The editor is lazy-loaded.** ProseMirror is about 109 kB gzipped; leaving it in
+  the initial bundle took the main chunk from 113 kB to 244 kB. `RichTextField` holds
+  the `useController` wiring and suspends on `RichTextEditor`, so the form paints
+  without it — the same treatment react-pdf and pptxgenjs already get.
+- **Bold and italic combine safely** because all four Roboto variants are registered;
+  an unregistered combination would fail the whole PDF render.
+- **The PPTX keeps live formatting** rather than flattened text, since pptxgenjs run
+  options map onto the same marks.
+- **Old drafts migrate**: `asRichText` accepts a plain string (before the editor) and
+  the achievements mapper still folds a pre-textarea `bullets` array, so no
+  `DRAFT_KEY` bump was needed.
+- Formatting behaviour is unit-tested at the conversion layer rather than by driving
+  ProseMirror under jsdom, which is where it can be asserted deterministically.
+
+### Achievements as free text
+
+Experience achievements were an array of bullet objects edited through a nested
+`RepeatableSection`; they are now a single `achievements` textarea, one per line. The
+rendered output is unchanged — `bulletLines` (formerly `profileBullets`) splits the
+text and both exporters still draw bullets — so this simplifies the input without
+touching the template. `profile.summary` already worked this way, which is why the
+same helper serves both.
+
+Old drafts are migrated rather than discarded: `normalizeDraft` folds a stored
+`bullets` array into the textarea, one line per bullet, and prefers `achievements`
+when both are present. That is why `DRAFT_KEY` did not need bumping for this change.
+
+### The page budget
+
+The two columns are a flex row, and react-pdf cannot split a row across pages. That
+makes page one all-or-nothing, with two distinct failure modes once the left column
+gets too tall:
+
+- **A blank sheet between the two real pages.** Overflowing by even a point emits a
+  continuation page carrying only the card background — no text.
+- **Page one reduced to just the header,** when the row cannot fit at all and moves
+  wholesale to the next page.
+
+Neither degrades gradually, and the behaviour is not monotonic in content length, so
+tuning by eye is unreliable — measure the page count instead. Things that were tried
+and made no difference: the card's `flexGrow`, `Section`'s `minPresenceAhead`, and the
+`fixed` gradient background. What does govern it is cumulative left-column spacing:
+`rowDivider`'s margins (2 above, 6 below), `section`'s `marginBottom` (4) and
+`bullet`'s `marginBottom` (1). Those values are load-bearing; growing them brings the
+blank page back. Between them, the gap from a section's last line to the next
+section's label is about 34pt against a 13.6pt line pitch.
+
+Beyond a certain amount of content the second page is simply necessary, and the
+current structure handles that badly — it moves the whole row rather than splitting.
+Fixing that properly means making the columns independently breakable rather than one
+row. `CvDocument.test.tsx` renders a realistically full CV and asserts two pages with
+neither empty, which is what catches regressions here.
+- **The card is rounded on its top-right corner only, at 52pt** (double the previous
+  radius, now `cardRadius`). The other three corners are square.
+- **The profile photo's 6pt white ring is a parent `View`'s background, not a border
+  on the `Image`.** A border on an image is stroked *before* the image is painted, so
+  the image covers it and nothing shows — which is exactly how it first shipped.
+  `photoFrame` supplies the ring and pads by `photoBorder`; the image is clipped to
+  `photoSize - photoBorder * 2`. The outer diameter stays `photoSize`, so the header
+  layout is unchanged, and the visible image is 128pt rather than 140pt.
+
+  Note when testing images: react-pdf silently skips an undecodable one, so a fixture
+  with a malformed data URL will lay out correctly while painting nothing. Generate
+  real PNG bytes for anything that asserts about an image.
+
+Tests that touch the skill catalog derive their keys from `EXPERTISE_ENTRIES` rather
+than naming categories, and `skillCatalog.test.ts` asserts structural invariants
+rather than the file's current contents. skills.md is data the user edits, and naming
+categories in tests made every edit break the suite.
+
+`pdfLayout.test.tsx` (formerly `headerLayout.test.tsx`) reads the laid-out text positions back out of the rendered PDF
+with `pdfjs-dist` and asserts the centring, the right-margin alignment and that
+nothing wraps or overflows. That is a stronger check than the other document tests,
+which only prove the file renders — it caught both of the bugs above. It cannot see
+the SVG shapes, so the chevron geometry is unit-tested separately.
+
+It also inspects filled paths from the operator list, which is how the card's corner
+is verified. Two traps in reading those paths: the coordinates are in react-pdf's
+drawing space where **y grows downward**, the opposite of the text positions in the
+same file; and react-pdf emits four corner curves regardless of radius, so counting
+curves proves nothing. A square corner is a degenerate curve passing through the
+corner point, a rounded one never touches it. Bezier control points also sit on the
+adjacent edges, so the helper keeps anchor points only.
 
 ## PPTX export
 

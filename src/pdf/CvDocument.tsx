@@ -1,16 +1,21 @@
 import type { ReactNode } from 'react'
 import {
+  Defs,
   Document,
   Image,
+  LinearGradient,
   Page,
   Path,
   Polygon,
+  Rect,
+  Stop,
   StyleSheet,
   Svg,
   Text,
   View,
 } from '@react-pdf/renderer'
 import type { Cv } from '@/schema/cv'
+import type { RichRun, RichText as RichTextValue } from '@/schema/richText'
 import brandLogo from './assets/infosys-logo.png'
 import { registerFonts } from './fonts'
 import {
@@ -22,11 +27,13 @@ import {
   hasSecondPageContent,
   languageLine,
   presentSections,
-  profileBullets,
+  renderableRichText,
   projectEntries,
   qualificationLine,
 } from './model'
 import { FONT_FAMILY, PAGE_SIZE, colors, layout, type } from './theme'
+
+const [PAGE_WIDTH, PAGE_HEIGHT] = PAGE_SIZE
 
 /**
  * Static branding from the original slide, not part of the CV data model. Set to
@@ -39,34 +46,66 @@ registerFonts()
 const styles = StyleSheet.create({
   page: {
     fontFamily: FONT_FAMILY,
-    backgroundColor: colors.pageBg,
+    // Only a fallback: the gradient is drawn by PageBackground. react-pdf's
+    // backgroundColor takes solid colours only.
+    backgroundColor: colors.pageGradientTop,
     color: colors.text,
+  },
+  pageBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: PAGE_WIDTH,
+    height: PAGE_HEIGHT,
   },
 
   header: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: layout.headerHeight,
     paddingHorizontal: layout.cardMargin,
     paddingVertical: 12,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.header,
   },
   chevrons: {
-    marginRight: 14,
+    marginRight: 16,
   },
-  photo: {
+  /**
+   * The white ring is the frame's own background, not a border on the Image:
+   * react-pdf strokes an image's border *before* painting the image, so the image
+   * covers it and nothing shows. The outer diameter stays photoSize, so the header
+   * layout is unchanged.
+   */
+  photoFrame: {
     width: layout.photoSize,
     height: layout.photoSize,
     marginRight: 18,
+    padding: layout.photoBorder,
     borderRadius: layout.photoSize / 2,
+    backgroundColor: colors.surface,
+  },
+  photo: {
+    width: layout.photoSize - layout.photoBorder * 2,
+    height: layout.photoSize - layout.photoBorder * 2,
+    borderRadius: (layout.photoSize - layout.photoBorder * 2) / 2,
     objectFit: 'cover',
   },
   identity: {
     flex: 1,
     alignItems: 'flex-start',
   },
+  /**
+   * Shrinks to the pill's width, so centring here puts both the name and the
+   * headline on the pill's centre axis rather than the header's.
+   */
+  identityBlock: {
+    alignItems: 'center',
+  },
   namePill: {
     minWidth: 260,
+    flexDirection: 'row',
+    justifyContent: 'center',
     marginBottom: 12,
     paddingVertical: 8,
     paddingHorizontal: 20,
@@ -82,23 +121,30 @@ const styles = StyleSheet.create({
     fontSize: type.headline,
     fontWeight: 700,
     color: colors.surface,
+    textAlign: 'center',
   },
   contactRow: {
+    position: 'absolute',
+    // Both edges are anchored on purpose: with only `right` set the box collapses
+    // to a narrow width and the addresses wrap mid-word.
+    left: layout.cardMargin,
+    right: layout.cardMargin,
+    bottom: 12,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    maxWidth: 480,
-    marginTop: 10,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   contactItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginLeft: 18,
   },
   contactIcon: {
-    marginRight: 5,
+    marginRight: 6,
   },
   contactText: {
     fontSize: type.contact,
+    fontWeight: 700,
     color: colors.surface,
   },
   logo: {
@@ -116,7 +162,8 @@ const styles = StyleSheet.create({
     marginBottom: layout.cardMargin,
     padding: 16,
     backgroundColor: colors.cardFill,
-    borderRadius: layout.cardRadius,
+    // Top-right only, so the card reads as a folded corner rather than a pill.
+    borderTopRightRadius: layout.cardRadius,
   },
   cardTab: {
     position: 'absolute',
@@ -124,7 +171,6 @@ const styles = StyleSheet.create({
     width: layout.tabWidth,
     height: layout.tabHeight,
     backgroundColor: colors.accent,
-    borderRadius: 2,
   },
   cardTabLeft: {
     left: -layout.tabWidth / 2,
@@ -153,11 +199,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopStyle: 'dashed',
     borderTopColor: colors.dashDivider,
-    marginVertical: 14,
+    // Deliberately tight, and asymmetric so the rule reads as closing the section it
+    // follows. These values are load-bearing for pagination, not just taste — see the
+    // page-budget note in docs/PLAN.md before growing them.
+    marginTop: 2,
+    marginBottom: 6,
   },
 
   section: {
-    marginBottom: 14,
+    marginBottom: 4,
   },
   labelBar: {
     flexDirection: 'row',
@@ -166,7 +216,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 4,
   },
   labelBarDark: {
     backgroundColor: colors.labelBgDark,
@@ -198,6 +247,15 @@ const styles = StyleSheet.create({
   strong: {
     fontWeight: 700,
   },
+  runBold: {
+    fontWeight: 700,
+  },
+  runItalic: {
+    fontStyle: 'italic',
+  },
+  runUnderline: {
+    textDecoration: 'underline',
+  },
   /** Certification URLs under an expertise group; restyle freely. */
   expertiseLink: {
     marginLeft: 8,
@@ -206,7 +264,7 @@ const styles = StyleSheet.create({
   },
   bullet: {
     flexDirection: 'row',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   bulletDot: {
     width: 8,
@@ -248,6 +306,96 @@ const styles = StyleSheet.create({
   },
 })
 
+const PAGE_GRADIENT_ID = 'pageBackdrop'
+
+/**
+ * The page's vertical gradient, drawn as an SVG shading rect because react-pdf's
+ * `backgroundColor` only accepts solid colours. `fixed` repeats it on continuation
+ * pages, and rendering it as each Page's first child puts it behind the content.
+ */
+function PageBackground() {
+  return (
+    <View fixed style={styles.pageBackground}>
+      <Svg
+        width={PAGE_WIDTH}
+        height={PAGE_HEIGHT}
+        viewBox={`0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}`}
+      >
+        <Defs>
+          {/*
+            Vertical axis down the page's centre line. x must be the same non-zero
+            value on both ends: react-pdf reads `x2` as `props.x2 || 1`, so passing 0
+            silently becomes 1 and tilts the gradient.
+          */}
+          <LinearGradient
+            id={PAGE_GRADIENT_ID}
+            gradientUnits="userSpaceOnUse"
+            x1={PAGE_WIDTH / 2}
+            y1={0}
+            x2={PAGE_WIDTH / 2}
+            y2={PAGE_HEIGHT}
+          >
+            <Stop offset={0} stopColor={colors.pageGradientTop} />
+            <Stop offset={1} stopColor={colors.pageGradientBottom} />
+          </LinearGradient>
+        </Defs>
+        <Rect
+          x={0}
+          y={0}
+          width={PAGE_WIDTH}
+          height={PAGE_HEIGHT}
+          fill={`url(#${PAGE_GRADIENT_ID})`}
+        />
+      </Svg>
+    </View>
+  )
+}
+
+/**
+ * Rich text runs. Bold and italic combine because all four Roboto variants are
+ * registered; an unregistered combination would fail the whole render.
+ */
+function Runs({ runs }: { runs: RichRun[] }) {
+  return (
+    <>
+      {runs.map((run, index) => {
+        const marks = [
+          run.bold ? styles.runBold : undefined,
+          run.italic ? styles.runItalic : undefined,
+          run.underline ? styles.runUnderline : undefined,
+        ].filter((mark) => mark !== undefined)
+
+        return marks.length === 0 ? (
+          <Text key={index}>{run.text}</Text>
+        ) : (
+          <Text key={index} style={marks}>
+            {run.text}
+          </Text>
+        )
+      })}
+    </>
+  )
+}
+
+/** Blocks of a rich-text field: bullets keep the shared Bullet layout. */
+function RichText({ value }: { value: RichTextValue }) {
+  return (
+    <>
+      {renderableRichText(value).blocks.map((block, index) =>
+        block.type === 'bullet' ? (
+          <Bullet key={index}>
+            <Runs runs={block.runs} />
+          </Bullet>
+        ) : (
+          <Text key={index} style={styles.body}>
+            <Runs runs={block.runs} />
+          </Text>
+        ),
+      )}
+    </>
+  )
+}
+
 function Bullet({ children }: { children: ReactNode }) {
   return (
     <View style={styles.bullet}>
@@ -286,19 +434,78 @@ function Section({ label, onBorder, variant = 'blue', children }: SectionProps) 
   )
 }
 
-/** Decorative chevrons beside the logo, colors lifted from the original slide's circles. */
+/**
+ * Decorative chevrons beside the logo: left-pointing marks with a 90-degree tip and
+ * a triangular notch cut into the right side, which leaves two vertical right edges.
+ * Three of them, palest first, set tip-to-edge so each tip lands on the axis formed
+ * by the right edges of the mark before it.
+ */
+const CHEVRON = {
+  markWidth: 34,
+  /** Padding above the tallest point, mirrored below. */
+  top: 6,
+  /** Horizontal depth of the cut-out. */
+  notchDepth: 13.6,
+} as const
+
+/**
+ * A 90-degree tip means the arms rise at 45 degrees, so the vertical span is exactly
+ * twice the mark width. Deriving it keeps the angle correct if the width changes.
+ */
+const CHEVRON_SPAN = CHEVRON.markWidth * 2
+const CHEVRON_HEIGHT = CHEVRON.top * 2 + CHEVRON_SPAN
+
+const CHEVRON_FILLS = [colors.surface, colors.accentLight, colors.accentMid] as const
+
+/** Tip-to-edge: no gap, so each mark starts where the previous one ends. */
+export const chevronOffsets = (): number[] =>
+  CHEVRON_FILLS.map((_, index) => index * CHEVRON.markWidth)
+
+const CHEVRON_WIDTH = CHEVRON.markWidth * CHEVRON_FILLS.length
+
+/**
+ * The six points of one mark. The notch edges run parallel to the outer arms, so
+ * both arms keep an even thickness, and the segments at `offset + markWidth` are the
+ * vertical right edges.
+ */
+export const chevronPoints = (offset: number): string => {
+  const { markWidth, top, notchDepth } = CHEVRON
+  const midY = top + markWidth
+  const bottom = top + CHEVRON_SPAN
+  const right = offset + markWidth
+
+  return [
+    `${offset},${midY}`,
+    `${right},${top}`,
+    `${right},${midY - notchDepth}`,
+    `${right - notchDepth},${midY}`,
+    `${right},${midY + notchDepth}`,
+    `${right},${bottom}`,
+  ].join(' ')
+}
+
 function Chevrons() {
   return (
-    <Svg width={54} height={40} viewBox="0 0 54 40" style={styles.chevrons}>
-      <Polygon points="36,4 16,20 36,36 44,36 24,20 44,4" fill={colors.accentLight} />
-      <Polygon points="44,4 24,20 44,36 52,36 32,20 52,4" fill={colors.accentMid} />
+    <Svg
+      width={CHEVRON_WIDTH}
+      height={CHEVRON_HEIGHT}
+      viewBox={`0 0 ${CHEVRON_WIDTH} ${CHEVRON_HEIGHT}`}
+      style={styles.chevrons}
+    >
+      {chevronOffsets().map((offset, index) => (
+        <Polygon
+          key={offset}
+          points={chevronPoints(offset)}
+          fill={CHEVRON_FILLS[index]}
+        />
+      ))}
     </Svg>
   )
 }
 
 function MailIcon() {
   return (
-    <Svg width={10} height={8} viewBox="0 0 20 16" style={styles.contactIcon}>
+    <Svg width={13} height={10.4} viewBox="0 0 20 16" style={styles.contactIcon}>
       <Path d="M1 1 H19 V15 H1 Z M1 1 L10 9 L19 1" stroke={colors.surface} strokeWidth={1.4} fill="none" />
     </Svg>
   )
@@ -306,7 +513,7 @@ function MailIcon() {
 
 function PinIcon() {
   return (
-    <Svg width={9} height={11} viewBox="0 0 16 20" style={styles.contactIcon}>
+    <Svg width={11.7} height={14.3} viewBox="0 0 16 20" style={styles.contactIcon}>
       <Path
         d="M8 0 C3.6 0 0 3.4 0 7.6 C0 13 8 20 8 20 C8 20 16 13 16 7.6 C16 3.4 12.4 0 8 0 Z"
         fill={colors.surface}
@@ -322,32 +529,37 @@ function Header({ cv }: { cv: Cv }) {
   return (
     <View style={styles.header}>
       {cv.personal.photo !== '' && (
-        <Image style={styles.photo} src={cv.personal.photo} />
+        <View style={styles.photoFrame}>
+          <Image style={styles.photo} src={cv.personal.photo} />
+        </View>
       )}
 
       <View style={styles.identity}>
-        {name !== '' && (
-          <View style={styles.namePill}>
-            <Text style={styles.nameText}>{name}</Text>
-          </View>
-        )}
-        {cv.personal.headline.trim() !== '' && (
-          <Text style={styles.headlineText}>{cv.personal.headline}</Text>
-        )}
-        {contacts.length > 0 && (
-          <View style={styles.contactRow}>
-            {contacts.map((contact, index) => (
-              <View key={contact} style={styles.contactItem}>
-                {index === 0 ? <MailIcon /> : <PinIcon />}
-                <Text style={styles.contactText}>{contact}</Text>
-              </View>
-            ))}
-          </View>
-        )}
+        <View style={styles.identityBlock}>
+          {name !== '' && (
+            <View style={styles.namePill}>
+              <Text style={styles.nameText}>{name}</Text>
+            </View>
+          )}
+          {cv.personal.headline.trim() !== '' && (
+            <Text style={styles.headlineText}>{cv.personal.headline}</Text>
+          )}
+        </View>
       </View>
 
       {BRAND_LOGO !== null && <Chevrons />}
       {BRAND_LOGO !== null && <Image style={styles.logo} src={BRAND_LOGO} />}
+
+      {contacts.length > 0 && (
+        <View style={styles.contactRow}>
+          {contacts.map((contact, index) => (
+            <View key={contact} style={styles.contactItem}>
+              {index === 0 ? <MailIcon /> : <PinIcon />}
+              <Text style={styles.contactText}>{contact}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   )
 }
@@ -361,6 +573,7 @@ export default function CvDocument({ cv }: { cv: Cv }) {
   return (
     <Document title={name === '' ? 'CV' : `${name} - CV`} author={name}>
       <Page size={PAGE_SIZE} style={styles.page} wrap>
+        <PageBackground />
         <Header cv={cv} />
 
         <View style={styles.card}>
@@ -370,10 +583,12 @@ export default function CvDocument({ cv }: { cv: Cv }) {
             <View style={styles.leftColumn}>
               {present.profile && (
                 <Section label="Profile summary" onBorder variant="dark">
-                  {profileBullets(cv.profile.summary).map((line) => (
-                    <Bullet key={line}>{line}</Bullet>
-                  ))}
+                  <RichText value={cv.profile.summary} />
                 </Section>
+              )}
+
+              {present.profile && (present.qualifications || present.expertise) && (
+                <View style={styles.rowDivider} />
               )}
 
               {present.qualifications && (
@@ -382,6 +597,10 @@ export default function CvDocument({ cv }: { cv: Cv }) {
                     <Bullet key={entry.id}>{qualificationLine(entry)}</Bullet>
                   ))}
                 </Section>
+              )}
+
+              {present.qualifications && present.expertise && (
+                <View style={styles.rowDivider} />
               )}
 
               {present.expertise && (
@@ -418,9 +637,7 @@ export default function CvDocument({ cv }: { cv: Cv }) {
                       {entry.meta !== '' && (
                         <Text style={styles.entryMeta}>{entry.meta}</Text>
                       )}
-                      {entry.bullets.map((bullet) => (
-                        <Bullet key={bullet}>{bullet}</Bullet>
-                      ))}
+                      <RichText value={entry.achievements} />
                       {entry.tech !== '' && (
                         <Text style={styles.entryTech}>{entry.tech}</Text>
                       )}
@@ -435,6 +652,7 @@ export default function CvDocument({ cv }: { cv: Cv }) {
 
       {hasSecondPageContent(cv) && (
         <Page size={PAGE_SIZE} style={styles.page} wrap>
+          <PageBackground />
           <View style={styles.card}>
             <View style={[styles.cardTab, styles.cardTabLeft]} />
             <View style={[styles.cardTab, styles.cardTabRight]} />
@@ -499,9 +717,7 @@ export default function CvDocument({ cv }: { cv: Cv }) {
                     {project.meta !== '' && (
                       <Text style={styles.entryMeta}>{project.meta}</Text>
                     )}
-                    {project.description !== '' && (
-                      <Text style={styles.body}>{project.description}</Text>
-                    )}
+                    <RichText value={project.description} />
                     {project.tech !== '' && (
                       <Text style={styles.entryTech}>{project.tech}</Text>
                     )}

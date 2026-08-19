@@ -4,8 +4,6 @@ import {
   SKILL_LEVEL_MAX,
   SKILL_LEVEL_MIN,
   SKILL_MAX_MONTHS,
-  SKILL_MAX_YEARS,
-  type Bullet,
   type Certification,
   type CertificationLink,
   type Cv,
@@ -27,11 +25,18 @@ import {
   predefinedSkill,
 } from '@/schema/defaults'
 import { EXPERTISE_ENTRIES } from '@/schema/skillCatalog'
+import {
+  emptyRichText,
+  richTextFromPlain,
+  richTextSchema,
+  type RichBlock,
+  type RichText,
+} from '@/schema/richText'
 
 // Bump when a shape change makes older drafts unreadable; stale keys are ignored
-// rather than migrated. v4 made level-1 headings selectable in their own right, so
-// the entry list and therefore the stored key set changed again.
-export const DRAFT_KEY = 'cv-builder:draft:v4'
+// rather than migrated. v5 introduced the "!" leaf marker in skills.md, which moved
+// leaves out of the entry list and into their parent's skills, changing stored keys.
+export const DRAFT_KEY = 'cv-builder:draft:v5'
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -63,6 +68,17 @@ const asCount = (value: unknown, max: number): number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max
     ? value
     : 0
+
+/**
+ * Experience used to be a years/months pair. A stored years value is folded into the
+ * single total rather than dropped.
+ */
+const toExperienceMonths = (item: Record<string, unknown>): number => {
+  const months = asCount(item.experienceMonths, SKILL_MAX_MONTHS)
+  const years = asCount(item.experienceYears, SKILL_MAX_MONTHS)
+
+  return Math.min(months + years * 12, SKILL_MAX_MONTHS)
+}
 
 const asLastUsed = (value: unknown): LastUsed | '' =>
   LAST_USED_VALUES.includes(value as LastUsed) ? (value as LastUsed) : ''
@@ -101,8 +117,7 @@ const toSkill = (raw: unknown, defaultSelected: boolean): Skill => {
     name: asText(item.name),
     selected: asBool(item.selected, defaultSelected),
     level: asSkillLevel(item.level),
-    experienceYears: asCount(item.experienceYears, SKILL_MAX_YEARS),
-    experienceMonths: asCount(item.experienceMonths, SKILL_MAX_MONTHS),
+    experienceMonths: toExperienceMonths(item),
     lastUsed: asLastUsed(item.lastUsed),
     certificationLinks: asArray(item.certificationLinks).map(toCertificationLink),
   }
@@ -121,16 +136,17 @@ const toExpertiseGroups = (raw: unknown): ExpertiseGroup[] => {
     const match = stored.find((group) => group.key === entry.key)
     const storedSkills = asArray(match?.skills).map(asRecord)
 
-    const skills = entry.holdsSkills
-      ? entry.options.length > 0
+    const skills =
+      entry.options.length > 0
         ? entry.options.map((option) => {
             const found = storedSkills.find((skill) => skill.name === option)
             return found
               ? { ...toSkill(found, false), name: option }
               : predefinedSkill(option)
           })
-        : storedSkills.map((skill) => toSkill(skill, true))
-      : []
+        : entry.open
+          ? storedSkills.map((skill) => toSkill(skill, true))
+          : []
 
     return {
       key: entry.key,
@@ -140,12 +156,30 @@ const toExpertiseGroups = (raw: unknown): ExpertiseGroup[] => {
   })
 }
 
-const toBullet = (raw: unknown): Bullet => {
-  const item = asRecord(raw)
-  return {
-    id: asId(item.id),
-    text: asText(item.text),
-  }
+/**
+ * Rich text, with two older shapes migrated rather than discarded: a plain string
+ * (before the editor) and an array of bullet objects (before that). Anything else
+ * falls back to an empty document.
+ */
+const asRichText = (
+  value: unknown,
+  fallbackBlock: RichBlock['type'] = 'bullet',
+): RichText => {
+  if (typeof value === 'string') return richTextFromPlain(value, fallbackBlock)
+
+  const parsed = richTextSchema.safeParse(value)
+  return parsed.success ? parsed.data : emptyRichText()
+}
+
+const toAchievements = (item: Record<string, unknown>): RichText => {
+  if ('achievements' in item) return asRichText(item.achievements)
+
+  // Older still: one object per bullet.
+  const bullets = asArray(item.bullets)
+    .map((bullet) => asText(asRecord(bullet).text).trim())
+    .filter((text) => text !== '')
+
+  return richTextFromPlain(bullets.join('\n'))
 }
 
 const toExperience = (raw: unknown): Experience => {
@@ -158,7 +192,7 @@ const toExperience = (raw: unknown): Experience => {
     startDate: asText(item.startDate),
     endDate: asText(item.endDate),
     current: asBool(item.current),
-    bullets: asArray(item.bullets).map(toBullet),
+    achievements: toAchievements(item),
     tech: asTextArray(item.tech),
   }
 }
@@ -198,7 +232,7 @@ const toProject = (raw: unknown): Project => {
     id: asId(item.id),
     name: asText(item.name),
     role: asText(item.role),
-    description: asText(item.description),
+    description: asRichText(item.description, 'paragraph'),
     tech: asTextArray(item.tech),
     url: asText(item.url),
     startDate: asText(item.startDate),
@@ -230,7 +264,7 @@ export const normalizeDraft = (raw: unknown): Cv => {
       photo: asText(personal.photo),
     },
     profile: {
-      summary: asText(profile.summary),
+      summary: asRichText(profile.summary),
     },
     qualifications: 'qualifications' in stored
       ? asArray(stored.qualifications).map(toQualification)

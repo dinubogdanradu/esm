@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { findEntry, isKnownEntry } from './skillCatalog'
+import { ancestorKeys, findEntry, isKnownEntry } from './skillCatalog'
+import { richTextIsEmpty, richTextSchema } from './richText'
 
 export const LANGUAGE_LEVELS = [
   'Native',
@@ -32,12 +33,8 @@ export const LAST_USED_VALUES = [
 
 export type LastUsed = (typeof LAST_USED_VALUES)[number]
 
-/**
- * Experience is a duration pair: whole years plus a remainder in months, so months
- * is capped at 11 rather than being an independent total.
- */
-export const SKILL_MAX_YEARS = 60
-export const SKILL_MAX_MONTHS = 11
+/** Experience is a single total in months; 720 is sixty years. */
+export const SKILL_MAX_MONTHS = 720
 
 // Optional fields are empty strings rather than undefined so every text input
 // stays controlled. "Absent" is therefore '' throughout, and the PDF template
@@ -46,6 +43,10 @@ const text = z.string()
 
 const filled = (message: string) =>
   z.string().refine((value) => value.trim().length > 0, { message })
+
+/** Rich text carrying at least one non-blank run. */
+const filledRichText = (message: string) =>
+  richTextSchema.refine((value) => !richTextIsEmpty(value), { message })
 
 const MONTH_YEAR = /^\d{4}-(?:0[1-9]|1[0-2])$/
 
@@ -67,7 +68,7 @@ export const personalSchema = z.object({
 })
 
 export const profileSchema = z.object({
-  summary: filled('Profile summary is required'),
+  summary: filledRichText('Profile summary is required'),
 })
 
 export const qualificationSchema = z.object({
@@ -99,7 +100,6 @@ export const skillSchema = z.object({
    */
   selected: z.boolean(),
   level: z.number().int().min(SKILL_LEVEL_MIN).max(SKILL_LEVEL_MAX),
-  experienceYears: z.number().int().min(0).max(SKILL_MAX_YEARS),
   experienceMonths: z.number().int().min(0).max(SKILL_MAX_MONTHS),
   lastUsed: z.union([z.literal(''), z.enum(LAST_USED_VALUES)]),
   certificationLinks: z.array(certificationLinkSchema),
@@ -133,35 +133,25 @@ export const expertiseSchema = z
       const catalogEntry = findEntry(entry.key)
       if (!catalogEntry) return
 
-      // A hidden fieldset must not block the step, so an entry whose parent is
-      // unchecked is not validated.
-      if (
-        catalogEntry.parentKey !== null &&
-        selectedByKey.get(catalogEntry.parentKey) !== true
-      ) {
-        return
-      }
+      // A hidden section must not block the step, so an entry with any unchecked
+      // ancestor is left alone.
+      const reachable = ancestorKeys(entry.key).every(
+        (key) => selectedByKey.get(key) === true,
+      )
+      if (!reachable) return
 
-      if (catalogEntry.childKeys.length > 0) {
-        const hasCheckedChild = catalogEntry.childKeys.some(
-          (childKey) => selectedByKey.get(childKey) === true,
-        )
+      // A category is satisfied by either a checked skill of its own or a checked
+      // sub-category, since it may hold both.
+      const hasCheckedSkill = entry.skills.some((skill) => skill.selected)
+      const hasCheckedChild = catalogEntry.childKeys.some(
+        (childKey) => selectedByKey.get(childKey) === true,
+      )
 
-        if (!hasCheckedChild) {
-          ctx.addIssue({
-            code: 'custom',
-            message: 'Select at least one item, or uncheck this group',
-            path: [index, 'selected'],
-          })
-        }
-        return
-      }
-
-      if (!entry.skills.some((skill) => skill.selected)) {
+      if (!hasCheckedSkill && !hasCheckedChild) {
         ctx.addIssue({
           code: 'custom',
           message: 'Select or add at least one skill, or uncheck this group',
-          path: [index, 'skills'],
+          path: [index, catalogEntry.childKeys.length > 0 ? 'selected' : 'skills'],
         })
         return
       }
@@ -207,11 +197,6 @@ export const expertiseSchema = z
     })
   })
 
-export const bulletSchema = z.object({
-  id: z.string(),
-  text: filled('Bullet cannot be empty'),
-})
-
 export const experienceSchema = z
   .object({
     id: z.string(),
@@ -221,7 +206,7 @@ export const experienceSchema = z
     startDate: monthYear,
     endDate: optionalMonthYear,
     current: z.boolean(),
-    bullets: z.array(bulletSchema).min(1, 'Add at least one bullet'),
+    achievements: filledRichText('Add at least one achievement'),
     tech: z.array(z.string()),
   })
   .refine((entry) => entry.current || entry.endDate !== '', {
@@ -253,7 +238,7 @@ export const projectSchema = z.object({
   id: z.string(),
   name: filled('Project name is required'),
   role: text,
-  description: text,
+  description: richTextSchema,
   tech: z.array(z.string()),
   url: optionalUrl,
   startDate: optionalMonthYear,
@@ -281,7 +266,6 @@ export type ExpertiseGroup = z.infer<typeof expertiseGroupSchema>
 export type Skill = z.infer<typeof skillSchema>
 export type CertificationLink = z.infer<typeof certificationLinkSchema>
 export type Experience = z.infer<typeof experienceSchema>
-export type Bullet = z.infer<typeof bulletSchema>
 export type Certification = z.infer<typeof certificationSchema>
 export type Language = z.infer<typeof languageSchema>
 export type SoftSkill = z.infer<typeof softSkillSchema>
