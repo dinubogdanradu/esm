@@ -49,13 +49,18 @@ npm run build      # typecheck then production build to dist/
 
 ## Deployment
 
-Pushing to `main` builds and publishes to GitHub Pages via
-[.github/workflows/deploy.yml](.github/workflows/deploy.yml). Pull requests run the
-same typecheck, tests and build but do not publish, since Pages hosts a single live
-site.
+Pushing to `deploy` builds and publishes to GitHub Pages via
+[.github/workflows/deploy.yml](.github/workflows/deploy.yml). Pull requests targeting
+that branch run the same typecheck, tests and build but do not publish, since Pages
+hosts a single live site.
 
-The workflow needs **Settings → Pages → Source: GitHub Actions** enabled once on the
-repository.
+Two one-time settings on the repository:
+
+- **Settings → Pages → Source: GitHub Actions.**
+- **Settings → Environments → github-pages → Deployment branches** must allow
+  `deploy`. That rule defaults to the default branch only, and a branch outside it
+  fails with "Branch is not allowed to deploy to github-pages due to environment
+  protection rules" — which surfaces at the deploy step, after a green build.
 
 To deploy by hand instead, the base path must match the repo:
 
