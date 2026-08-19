@@ -1,10 +1,8 @@
 name: Build and deploy
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+    branches: [deploy]
   workflow_dispatch:
 
 # Only read access is needed to build; the deploy job asks for more.
@@ -28,6 +26,8 @@ jobs:
         with:
           # Matches the version the project is developed against.
           node-version: '24'
+          env:
+            FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
           cache: npm
 
       - name: Install dependencies
