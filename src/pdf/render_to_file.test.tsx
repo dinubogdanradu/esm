@@ -50,7 +50,7 @@ const populated = () => {
             institution: 'Riverside Institute',
             degree: "Bachelor's Degree",
             field: 'Electrical Engineering',
-            location: 'Bucharest',
+            location: 'Lisbon',
             startDate: '2003-10',
             endDate: '2007-06',
             grade: '',
@@ -61,7 +61,7 @@ const populated = () => {
       level: 5,
       experienceMonths: 147,
       lastUsed: 'Within last month',
-      certificationLinks: [{ id: 'l1', url: 'https://example.com/drupal-cert' }],
+      certificationLinks: [{ id: 'l1', url: 'https://example.com/platform-cert' }],
     })
     selectSkill(cv, rated.key, ratedSkill(0), {
       level: 4,
@@ -77,7 +77,7 @@ const populated = () => {
             id: 'e1',
             company: 'Northwind Analytics',
             position: 'Senior Platform Developer',
-            location: 'Geneva',
+            location: 'Lisbon',
             startDate: '2019-04',
             endDate: '',
             current: true,

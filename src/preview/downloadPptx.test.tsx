@@ -55,8 +55,8 @@ const populated = (): Cv => {
     experienceMonths: 147,
     lastUsed: 'Within last month',
     certificationLinks: [
-      { id: 'l1', url: 'https://example.com/drupal-11' },
-      { id: 'l2', url: 'https://example.com/drupal-9' },
+      { id: 'l1', url: 'https://example.com/platform-cert-a' },
+      { id: 'l2', url: 'https://example.com/platform-cert-b' },
     ],
   })
   selectSkill(cv, rated.key, ratedSkill(1), {

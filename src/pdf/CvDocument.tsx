@@ -32,6 +32,16 @@ import {
   qualificationLine,
 } from './model'
 import { FONT_FAMILY, PAGE_SIZE, colors, layout, type } from './theme'
+import {
+  CHEVRON_FILLS,
+  CHEVRON_HEIGHT,
+  CHEVRON_WIDTH,
+  chevronOffsets,
+  chevronPoints,
+} from './chevron'
+
+// Re-exported so the geometry tests can reach it through the document module.
+export { chevronOffsets, chevronPoints }
 
 const [PAGE_WIDTH, PAGE_HEIGHT] = PAGE_SIZE
 
@@ -432,56 +442,6 @@ function Section({ label, onBorder, variant = 'blue', children }: SectionProps) 
       {children}
     </View>
   )
-}
-
-/**
- * Decorative chevrons beside the logo: left-pointing marks with a 90-degree tip and
- * a triangular notch cut into the right side, which leaves two vertical right edges.
- * Three of them, palest first, set tip-to-edge so each tip lands on the axis formed
- * by the right edges of the mark before it.
- */
-const CHEVRON = {
-  markWidth: 34,
-  /** Padding above the tallest point, mirrored below. */
-  top: 6,
-  /** Horizontal depth of the cut-out. */
-  notchDepth: 13.6,
-} as const
-
-/**
- * A 90-degree tip means the arms rise at 45 degrees, so the vertical span is exactly
- * twice the mark width. Deriving it keeps the angle correct if the width changes.
- */
-const CHEVRON_SPAN = CHEVRON.markWidth * 2
-const CHEVRON_HEIGHT = CHEVRON.top * 2 + CHEVRON_SPAN
-
-const CHEVRON_FILLS = [colors.surface, colors.accentLight, colors.accentMid] as const
-
-/** Tip-to-edge: no gap, so each mark starts where the previous one ends. */
-export const chevronOffsets = (): number[] =>
-  CHEVRON_FILLS.map((_, index) => index * CHEVRON.markWidth)
-
-const CHEVRON_WIDTH = CHEVRON.markWidth * CHEVRON_FILLS.length
-
-/**
- * The six points of one mark. The notch edges run parallel to the outer arms, so
- * both arms keep an even thickness, and the segments at `offset + markWidth` are the
- * vertical right edges.
- */
-export const chevronPoints = (offset: number): string => {
-  const { markWidth, top, notchDepth } = CHEVRON
-  const midY = top + markWidth
-  const bottom = top + CHEVRON_SPAN
-  const right = offset + markWidth
-
-  return [
-    `${offset},${midY}`,
-    `${right},${top}`,
-    `${right},${midY - notchDepth}`,
-    `${right - notchDepth},${midY}`,
-    `${right},${midY + notchDepth}`,
-    `${right},${bottom}`,
-  ].join(' ')
 }
 
 function Chevrons() {

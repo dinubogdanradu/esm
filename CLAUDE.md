@@ -196,7 +196,11 @@ icon carried across needs converting to an ESM import.
     keeps the two consistent, so a change there must be checked against both. Build it
     with `buildPptx`, which is split out from `downloadPptx` so tests can render under
     node; only the profile photo needs browser APIs. `pptxgenjs` has no document
-    language setting — `pptx.lang` and `theme.lang` do not exist.
+    language setting — `pptx.lang` and `theme.lang` do not exist — and its `margin` is
+    in *points*, so padding is expressed in each text box's `x`/`w` instead.
+  - **Chevron geometry lives in `src/pdf/chevron.ts`,** shared by both exporters: the
+    PDF draws it as polygons, the PPTX as an SVG image, since pptxgenjs has no
+    arbitrary-polygon shape. Change it in one place.
   - `mmmdownloadPptx.tsx` is an unused earlier copy of that exporter and should be
     deleted rather than updated.
 

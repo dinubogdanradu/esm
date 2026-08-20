@@ -537,6 +537,22 @@ group as real hyperlinks, which PowerPoint supports and react-pdf does not.
 - **Tests assert the archive is a valid zip and count slide parts** from the entry
   names rather than reading `pptx.slides`, which exists at runtime but is not in the
   library's typings.
+- **`margin` is in points, not inches.** The `[0.05, 0.1, 0.05, 0.1]` values
+  throughout are therefore effectively zero padding, which is why every section except
+  Experience summary sat flush against its box edge. Left padding is expressed in each
+  text box's own `x` instead — 0.158in right of its section bar — with the width
+  reduced by the same amount so the template's right edges are unchanged.
+- **The header logo and chevrons are the PDF's.** The logo is
+  `src/pdf/assets/infosys-logo.png` inlined as base64, so the deck still needs no
+  external asset. The chevrons come from `src/pdf/chevron.ts`, extracted so both
+  exporters share one geometry — pptxgenjs has no arbitrary-polygon shape, so the PPTX
+  renders that geometry as an SVG image, while the PDF draws it as polygons. The
+  previous PPTX chevrons were a rotated `halfFrame` shape approximating the design,
+  which could drift from the PDF independently.
+- **Contact text starts 0.06in past its icon's right edge.** The icons are 0.323in
+  wide and were overlapping the first characters. The email box also ends 0.06in short
+  of the location icon, so a long address shrinks (`fit: 'shrink'`) rather than running
+  underneath it.
 - **`pptxgenjs` has no document language setting.** An earlier `pptx.lang` and
   `theme.lang` did not typecheck: `PptxGenJS` has no such property and `ThemeProps`
   carries only `headFontFace` and `bodyFontFace`. Both were removed.

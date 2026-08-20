@@ -73,7 +73,7 @@ const populated = (): Cv => {
       institution: 'Riverside Institute',
       degree: "Bachelor's Degree",
       field: 'Electrical Engineering',
-      location: 'Bucharest',
+      location: 'Lisbon',
       startDate: '2003-10',
       endDate: '2007-06',
       grade: '',
@@ -84,7 +84,7 @@ const populated = (): Cv => {
     level: 5,
     experienceMonths: 147,
     lastUsed: 'Within last month',
-    certificationLinks: [{ id: 'l1', url: 'https://example.com/drupal-cert' }],
+    certificationLinks: [{ id: 'l1', url: 'https://example.com/platform-cert' }],
   })
   selectSkill(cv, rated.key, ratedSkill(0), {
     level: 4,
@@ -100,7 +100,7 @@ const populated = (): Cv => {
       id: 'e1',
       company: 'Northwind Analytics',
       position: 'Senior Platform Developer',
-      location: 'Geneva',
+      location: 'Lisbon',
       startDate: '2019-04',
       endDate: '',
       current: true,
@@ -127,10 +127,10 @@ const realistic = (): Cv => {
     'Over 18 years of experience with various technologies across the web spectrum (PHP, Javascript, Python, Java, CSS, bash, websockets etc)',
     'Good hardware and infrastructure knowledge (DevOps, CI/CD)',
     'Worked on more than 100 projects in Drupal, Wordpress, Django, Laravel, Zend, CodeIgniter, Magento, PrestaShop, VueJS, nodeJS, bash etc',
-    'Worked for clients like retail, banking, telecoms and public sector clients',
+    'Worked for clients across retail, banking, telecoms and public sector, from small brand sites to multi-region platforms',
   ].join('\n'))
   cv.qualifications = [
-    { id: 'q1', institution: 'Bucharest', degree: "Bachelor's Degree", field: 'Electrical Engineering and Computer Science', location: '', startDate: '', endDate: '', grade: '' },
+    { id: 'q1', institution: 'Riverside Institute', degree: "Bachelor's Degree", field: 'Electrical Engineering and Computer Science', location: '', startDate: '', endDate: '', grade: '' },
     { id: 'q2', institution: 'School of Social Sciences, Porto', degree: 'Masters in Anthropology (not graduated)', field: '', location: '', startDate: '', endDate: '', grade: '' },
   ]
   // Four expertise lines, from four distinct catalog entries: that is the amount that
@@ -163,7 +163,7 @@ const realistic = (): Cv => {
     { id: 'e1', company: 'Northwind Analytics (Platform)', position: 'Senior Platform Developer', location: '', startDate: '2019-04', endDate: '', current: true, tech: [],
       achievements: richTextFromPlain(['website maintenance and development','design system implementation','architecture design for new projects','audit and improve website accessibility','provide business analysis support for new features and projects (write documentation, use cases, create wireframes)','oversee deployments (CI/CD)'].join('\n')) },
     { id: 'e2', company: 'Harbourline Studio, Lisbon, Portugal', position: 'Senior Fullstack Web Developer', location: '', startDate: '2012-01', endDate: '2019-03', current: false, tech: [],
-      achievements: richTextFromPlain(['develop websites and web applications for clients (from US and RO)',"provide support for clients' existing web applications","provide hosting management and support for the company's servers and client servers",'write proposed architecture documentation for projects','write step by step instructions of management interfaces of built applications','develop internal application for credentials management','develop internal development architecture based on docker','develop internal web performance assessment application','oversee project deployments (CI/CD)'].join('\n')) },
+      achievements: richTextFromPlain(['develop websites and web applications for clients across two continents',"provide support for clients' existing web applications","provide hosting management and support for the company's servers and client servers",'write proposed architecture documentation for projects','write step by step instructions of management interfaces of built applications','develop internal application for credentials management','develop internal development architecture based on docker','develop internal web performance assessment application','oversee project deployments (CI/CD)'].join('\n')) },
   ]
   cv.certifications = [
     { id: 'c1', name: 'Certified Platform Engineer', issuer: '', date: '', expiryDate: '', credentialUrl: '' },

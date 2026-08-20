@@ -26,3 +26,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 tmp
+
+# Personal source material for the CV template: kept locally as design reference,
+# never committed. The originals also need purging from history — see docs/PLAN.md.
+src/pdf/assets/photo.jpeg
+src/pdf/assets/image7.jpeg
+src/pdf/assets/source.pptx
