@@ -27,8 +27,8 @@ vi.mock('./fonts/Roboto-Bold.ttf', () => fontPath('Roboto-Bold.ttf'))
 vi.mock('./fonts/Roboto-Italic.ttf', () => fontPath('Roboto-Italic.ttf'))
 vi.mock('./fonts/Roboto-BoldItalic.ttf', () => fontPath('Roboto-BoldItalic.ttf'))
 
-vi.mock('./assets/infosys-logo.png', () => ({
-  default: readFileSync(resolve('src/pdf/assets/infosys-logo.png')),
+vi.mock('./assets/brand-logo.png', () => ({
+  default: readFileSync(resolve('src/pdf/assets/brand-logo.png')),
 }))
 
 const { default: CvDocument, chevronPoints, chevronOffsets } = await import(

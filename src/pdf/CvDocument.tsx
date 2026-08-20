@@ -16,7 +16,7 @@ import {
 } from '@react-pdf/renderer'
 import type { Cv } from '@/schema/cv'
 import type { RichRun, RichText as RichTextValue } from '@/schema/richText'
-import brandLogo from './assets/infosys-logo.png'
+import brandLogo from './assets/brand-logo.png'
 import { registerFonts } from './fonts'
 import {
   certificationLine,

@@ -543,7 +543,7 @@ group as real hyperlinks, which PowerPoint supports and react-pdf does not.
   text box's own `x` instead — 0.158in right of its section bar — with the width
   reduced by the same amount so the template's right edges are unchanged.
 - **The header logo and chevrons are the PDF's.** The logo is
-  `src/pdf/assets/infosys-logo.png` inlined as base64, so the deck still needs no
+  `src/pdf/assets/brand-logo.png` inlined as base64, so the deck still needs no
   external asset. The chevrons come from `src/pdf/chevron.ts`, extracted so both
   exporters share one geometry — pptxgenjs has no arbitrary-polygon shape, so the PPTX
   renders that geometry as an SVG image, while the PDF draws it as polygons. The
@@ -623,7 +623,8 @@ Schema mismatches resolved while mapping:
 - Phone, website and LinkedIn were not in the original header; they now appear
   alongside email and location.
 
-The Infosys logo is retained as `BRAND_LOGO` in `CvDocument.tsx`. It is static
+The header logo is `BRAND_LOGO` in `CvDocument.tsx`, loaded from
+`src/pdf/assets/brand-logo.png`. It is static
 branding rather than CV data, so it currently appears on every generated CV — set
 the constant to null to drop it, or thread it through props to make it per-user.
 
