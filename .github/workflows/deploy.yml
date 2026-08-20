@@ -2,9 +2,9 @@ name: Build and deploy
 
 on:
   push:
-    branches: [deploy]
+    branches: [main]
   pull_request:
-    branches: [deploy]
+    branches: [main]
   workflow_dispatch:
 
 # Runs JavaScript actions themselves on Node 24 rather than the runner's default.
